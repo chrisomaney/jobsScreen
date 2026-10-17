@@ -1,0 +1,84 @@
+# Home Assistant snippets — Xavier / Presley / Jax / Banx
+# Internet unlock is per-kid (own list complete). Rewards tally is for leftover helpers.
+
+mqtt:
+  binary_sensor:
+    - name: "Xavier Internet Ready"
+      state_topic: "kids/xavier/internet"
+      payload_on: "on"
+      payload_off: "off"
+    - name: "Presley Internet Ready"
+      state_topic: "kids/presley/internet"
+      payload_on: "on"
+      payload_off: "off"
+    - name: "Jax Internet Ready"
+      state_topic: "kids/jax/internet"
+      payload_on: "on"
+      payload_off: "off"
+    - name: "Banx Internet Ready"
+      state_topic: "kids/banx/internet"
+      payload_on: "on"
+      payload_off: "off"
+
+  sensor:
+    - name: "Xavier Rewards Tally"
+      state_topic: "kids/xavier/rewards/tally"
+    - name: "Presley Rewards Tally"
+      state_topic: "kids/presley/rewards/tally"
+    - name: "Jax Rewards Tally"
+      state_topic: "kids/jax/rewards/tally"
+    - name: "Banx Rewards Tally"
+      state_topic: "kids/banx/rewards/tally"
+    - name: "Xavier Jobs Progress"
+      state_topic: "kids/xavier/progress"
+      value_template: "{{ value_json.pct }}"
+      unit_of_measurement: "%"
+      json_attributes_topic: "kids/xavier/progress"
+
+automation:
+  - id: xavier_internet_on
+    alias: "Xavier — unlock MikroTik when own jobs done"
+    trigger:
+      - platform: mqtt
+        topic: kids/xavier/internet
+        payload: "on"
+    action:
+      - service: notify.persistent_notification
+        data:
+          message: "Xavier finished own jobs — enable MikroTik profile"
+
+  - id: xavier_internet_off
+    alias: "Xavier — lock MikroTik when own jobs incomplete"
+    trigger:
+      - platform: mqtt
+        topic: kids/xavier/internet
+        payload: "off"
+    action:
+      - service: notify.persistent_notification
+        data:
+          message: "Xavier still has jobs — keep MikroTik locked"
+
+  - id: kids_rewards_help_event
+    alias: "Kids — reward help from leftover screen"
+    trigger:
+      - platform: mqtt
+        topic: kids/rewards/event
+    action:
+      - service: notify.persistent_notification
+        data:
+          message: >
+            {{ trigger.payload_json.doer_name }} helped with
+            {{ trigger.payload_json.owner_name }}'s
+            {{ trigger.payload_json.job_label }}
+            (tally {{ trigger.payload_json.tally }})
+
+  - id: kids_jobs_morning_reset
+    alias: "Kids jobs — morning reset"
+    trigger:
+      - platform: time
+        at: "05:30:00"
+    action:
+      - service: mqtt.publish
+        data:
+          topic: kids/cmd/reset_all
+          payload: "reset"
