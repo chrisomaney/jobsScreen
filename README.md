@@ -60,17 +60,31 @@ pio run -t upload
 pio device monitor
 ```
 
-**Windows tips**
-- If you see `Tried to lookup File '...KidsjobsScreen' as a Dir`, you are on an old tree or stale build cache. Get the latest commit (includes `extra_script.py`), then:
+**Windows tips (important)**
+
+LVGL uses deep `../` includes. Under a long path like
+`Downloads\jobsScreen-0314f0f...\jobsScreen\.pio\libdeps\waveshare-...`
+Windows hits the **260-character MAX_PATH** limit and fails with
+`lv_conf_internal.h: No such file`.
+
+1. Put the project in a **short path**, e.g. `C:\js` (not under Downloads with the long commit-hash folder name).
+2. Use the latest branch (env is now short: `ws7`).
+3. Clean and build:
 
 ```powershell
-# from the project folder
+cd C:\js
 Remove-Item -Recurse -Force .pio -ErrorAction SilentlyContinue
-pio run
+pio run -e ws7
 ```
 
-- Keep the project path simple (e.g. `C:\src\jobsScreen`) — avoid odd download-zip folder names when possible.
-- Optional: `python -m pip install charset-normalizer` clears the harmless `RequestsDependencyWarning`.
+Also create secrets before a real flash:
+
+```powershell
+copy include\secrets.example.h include\secrets.h
+# edit Wi-Fi / MQTT in include\secrets.h
+```
+
+Optional: `python -m pip install charset-normalizer` clears the harmless Requests warning.
 
 If `lib/Networking` is missing after clone, copy the framework Network library once (Arduino-ESP32 3.x link helper):
 
