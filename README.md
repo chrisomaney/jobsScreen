@@ -18,10 +18,15 @@ Firmware for the **Waveshare ESP32-S3-Touch-LCD-7** (800×480). Four kids — **
 Until you add a photo, a soft generated backdrop is used. To use your own:
 
 ```bash
-pip install pillow
-python3 tools/make_idle_photo.py /path/to/family.jpg   # writes data/idle.rgb565 (800×480)
-pio run -t uploadfs                                     # upload LittleFS
-pio run -t upload                                       # firmware if needed
+python -m pip install pillow
+
+# Windows — use a normal drive path (not /c:/...):
+python tools/make_idle_photo.py C:\1\photo.jpg
+# or:
+python tools/make_idle_photo.py "C:/1/photo.jpg"
+
+pio run -t uploadfs    # uploads data/idle.rgb565 to the panel
+pio run -t upload      # firmware if needed
 ```
 
 Idle backlight / timeout: `BACKLIGHT_IDLE_PERCENT`, `BACKLIGHT_ACTIVE_PERCENT`, `IDLE_TIMEOUT_MS` in `include/config.h`.
