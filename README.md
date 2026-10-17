@@ -62,20 +62,25 @@ pio device monitor
 
 **Windows tips (important)**
 
-LVGL uses deep `../` includes. Under a long path like
-`Downloads\jobsScreen-0314f0f...\jobsScreen\.pio\libdeps\waveshare-...`
-Windows hits the **260-character MAX_PATH** limit and fails with
-`lv_conf_internal.h: No such file`.
-
-1. Put the project in a **short path**, e.g. `C:\js` (not under Downloads with the long commit-hash folder name).
-2. Use the latest branch (env is now short: `ws7`).
-3. Clean and build:
+Your build must use env **`ws7`**. If the terminal shows
+`waveshare-esp32s3-touch-lcd-7`, you are on an **old folder / old branch**.
 
 ```powershell
+# Fresh short-path clone of the fix branch
+cd C:\
+Remove-Item -Recurse -Force C:\js -ErrorAction SilentlyContinue
+git clone -b cursor/kids-jobs-signoff-firmware-1786 https://github.com/chrisomaney/jobsScreen.git js
 cd C:\js
+
+# Confirm platformio.ini says default_envs = ws7
+Select-String -Path platformio.ini -Pattern "default_envs"
+
 Remove-Item -Recurse -Force .pio -ErrorAction SilentlyContinue
 pio run -e ws7
 ```
+
+In Cursor/VS Code with the PlatformIO extension: open **`C:\js`**, then Build
+(the toolbar should target **ws7**). Do not open an old Downloads unzip folder.
 
 Also create secrets before a real flash:
 
@@ -86,13 +91,7 @@ copy include\secrets.example.h include\secrets.h
 
 Optional: `python -m pip install charset-normalizer` clears the harmless Requests warning.
 
-If `lib/Networking` is missing after clone, copy the framework Network library once (Arduino-ESP32 3.x link helper):
-
-```bash
-mkdir -p lib/Networking
-cp -a ~/.platformio/packages/framework-arduinoespressif32/libraries/Network/. lib/Networking/
-# ensure library.properties name=Network
-```
+`lib/Network` is already in the repo (Arduino-ESP32 3.x WiFi dependency).
 
 ## MQTT topics
 

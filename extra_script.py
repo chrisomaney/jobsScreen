@@ -10,13 +10,37 @@ from pathlib import Path
 root = Path(env["PROJECT_DIR"])  # noqa: F821
 pioenv = env["PIOENV"]  # noqa: F821
 lv_conf = root / "include" / "lv_conf.h"
+network_src = root / "lib" / "Network" / "src"
+include_dir = root / "include"
 
+# Remove any previously mirrored Network headers from include/ — they break LDF
+# (headers alone satisfy #include <Network.h> so lib/Network is never linked).
+for name in (
+    "Network.h",
+    "NetworkClient.h",
+    "NetworkEvents.h",
+    "NetworkInterface.h",
+    "NetworkManager.h",
+    "NetworkServer.h",
+    "NetworkUdp.h",
+):
+    stale = include_dir / name
+    if stale.is_file():
+        stale.unlink()
+        print(f"[extra] removed stale {stale}")
+
+# Arduino-ESP32 3.x: framework WiFi includes "Network.h". When Network is vendored
+# under lib/, the WiFi builder often misses that include path. Force it with -I as
+# a single argv token (Windows-safe; never put -I${PROJECT_DIR} in platformio.ini).
+network_inc = str(network_src)
 env.Append(  # noqa: F821
     CPPPATH=[
-        str(root / "include"),
+        str(include_dir),
         str(root),
-        str(root / "lib" / "Network" / "src"),
+        network_inc,
     ],
+    CCFLAGS=["-I" + network_inc],
+    CXXFLAGS=["-I" + network_inc],
     CPPDEFINES=[
         "ARDUINO_USB_CDC_ON_BOOT=1",
         "ARDUINO_USB_MODE=1",

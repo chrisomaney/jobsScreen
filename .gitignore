@@ -7,3 +7,4 @@ include/secrets.h
 data/idle.rgb565
 *.pyc
 .DS_Store
+
