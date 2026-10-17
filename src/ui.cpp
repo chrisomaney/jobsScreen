@@ -4,6 +4,7 @@
 
 #include "clock_util.h"
 #include "display_board.h"
+#include "idle_photo.h"
 
 AppUi *AppUi::self_ = nullptr;
 
@@ -57,17 +58,75 @@ void AppUi::begin(JobState *state, MqttBridge *mqtt) {
   state_ = state;
   mqtt_ = mqtt;
   seen_revision_ = state_->revision();
+  last_activity_ms_ = millis();
+  buildIdle();
   buildHome();
   buildKidScaffold();
   buildNotDoneScaffold();
   buildDoerPicker();
-  showHome();
+  showIdle();
+}
+
+void AppUi::noteActivity() {
+  last_activity_ms_ = millis();
+}
+
+bool AppUi::isActiveSession() const {
+  return screen_kind_ != ScreenKind::Idle;
+}
+
+void AppUi::applyBacklightForScreen() {
+  if (screen_kind_ == ScreenKind::Idle) {
+    display_board_set_backlight(BACKLIGHT_IDLE_PERCENT);
+  } else {
+    display_board_set_backlight(BACKLIGHT_ACTIVE_PERCENT);
+  }
 }
 
 void AppUi::styleTab(lv_obj_t *btn, bool active, uint32_t accent) {
   lv_obj_set_style_bg_color(btn, c(active ? accent : COL_BTN), 0);
   lv_obj_set_style_border_width(btn, active ? 0 : 2, 0);
   lv_obj_set_style_border_color(btn, c(accent), 0);
+}
+
+void AppUi::buildIdle() {
+  screen_idle_ = lv_obj_create(nullptr);
+  lv_obj_set_style_bg_color(screen_idle_, c(0x1B2430), 0);
+  lv_obj_set_style_bg_opa(screen_idle_, LV_OPA_COVER, 0);
+  lv_obj_clear_flag(screen_idle_, LV_OBJ_FLAG_SCROLLABLE);
+
+  if (idle_photo_begin(&idle_img_dsc_)) {
+    idle_img_ = lv_img_create(screen_idle_);
+    lv_img_set_src(idle_img_, &idle_img_dsc_);
+    lv_obj_set_size(idle_img_, LCD_H_RES, LCD_V_RES);
+    lv_obj_align(idle_img_, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_clear_flag(idle_img_, LV_OBJ_FLAG_CLICKABLE);
+  }
+
+  // Soft gradient wipe so the CTA stays readable on any photo
+  lv_obj_t *veil = lv_obj_create(screen_idle_);
+  lv_obj_set_size(veil, LCD_H_RES, 160);
+  lv_obj_align(veil, LV_ALIGN_BOTTOM_MID, 0, 0);
+  lv_obj_set_style_bg_color(veil, c(0x0B1220), 0);
+  lv_obj_set_style_bg_opa(veil, LV_OPA_70, 0);
+  lv_obj_set_style_border_width(veil, 0, 0);
+  lv_obj_set_style_radius(veil, 0, 0);
+  lv_obj_clear_flag(veil, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+
+  lv_obj_t *brand = make_label(screen_idle_, "Jobs Sign-off", &lv_font_montserrat_20, COL_TEXT);
+  lv_obj_align(brand, LV_ALIGN_BOTTOM_MID, 0, -118);
+
+  lv_obj_t *go = lv_btn_create(screen_idle_);
+  lv_obj_set_size(go, 280, 64);
+  lv_obj_align(go, LV_ALIGN_BOTTOM_MID, 0, -36);
+  lv_obj_set_style_bg_color(go, c(0xE8EEF5), 0);
+  lv_obj_set_style_bg_color(go, c(0xFFFFFF), LV_STATE_PRESSED);
+  lv_obj_set_style_radius(go, 16, 0);
+  lv_obj_set_style_shadow_width(go, 0, 0);
+  lv_obj_set_style_border_width(go, 0, 0);
+  lv_obj_add_event_cb(go, onLetsGo, LV_EVENT_CLICKED, nullptr);
+  lv_obj_t *go_lbl = make_label(go, "Lets Go", &lv_font_montserrat_28, 0x1A2332);
+  lv_obj_center(go_lbl);
 }
 
 void AppUi::buildHome() {
@@ -520,11 +579,13 @@ void AppUi::rebuildNotDoneList() {
 
 void AppUi::showDoerPicker(size_t owner, size_t job) {
   awaiting_doer_ = true;
+  noteActivity();
   pending_owner_ = owner;
   pending_job_ = job;
   char buf[96];
   snprintf(buf, sizeof(buf), "Who did %s's \"%s\"?", KIDS[owner].name, JOBS[job].label);
   lv_label_set_text(doer_prompt_, buf);
+  applyBacklightForScreen();
   lv_scr_load(screen_doer_);
 }
 
@@ -548,9 +609,18 @@ void AppUi::completeLeftover(size_t doer) {
   showNotDone();
 }
 
+void AppUi::showIdle() {
+  awaiting_doer_ = false;
+  screen_kind_ = ScreenKind::Idle;
+  applyBacklightForScreen();
+  lv_scr_load(screen_idle_);
+}
+
 void AppUi::showHome() {
   awaiting_doer_ = false;
+  noteActivity();
   screen_kind_ = ScreenKind::Home;
+  applyBacklightForScreen();
   updateHomeRemainders();
   updateLeftoverHomeButton();
   lv_scr_load(screen_home_);
@@ -561,9 +631,11 @@ void AppUi::showKidPage(size_t kid, KidPage page) {
     return;
   }
   awaiting_doer_ = false;
+  noteActivity();
   active_kid_ = kid;
   active_page_ = page;
   screen_kind_ = ScreenKind::Kid;
+  applyBacklightForScreen();
   rebuildJobList();
   updateKidHeader();
   lv_scr_load(screen_kid_);
@@ -575,13 +647,17 @@ void AppUi::showNotDone() {
     return;
   }
   awaiting_doer_ = false;
+  noteActivity();
   screen_kind_ = ScreenKind::NotDone;
+  applyBacklightForScreen();
   rebuildNotDoneList();
   lv_scr_load(screen_not_done_);
 }
 
 void AppUi::refreshActiveScreen() {
   switch (screen_kind_) {
+    case ScreenKind::Idle:
+      break;
     case ScreenKind::Home:
       updateHomeRemainders();
       updateLeftoverHomeButton();
@@ -599,10 +675,21 @@ void AppUi::refreshActiveScreen() {
 }
 
 void AppUi::tick() {
+  // Any touch while in an active session keeps the panel awake
+  const bool down = display_board_touch_pressed();
+  if (down && !touch_was_down_ && isActiveSession()) {
+    noteActivity();
+  }
+  touch_was_down_ = down;
+
+  if (isActiveSession() && (millis() - last_activity_ms_ >= IDLE_TIMEOUT_MS)) {
+    showIdle();
+  }
+
   const uint32_t rev = state_->revision();
   if (rev != seen_revision_) {
     seen_revision_ = rev;
-    if (!awaiting_doer_) {
+    if (!awaiting_doer_ && screen_kind_ != ScreenKind::Idle) {
       refreshActiveScreen();
     }
   }
@@ -610,7 +697,7 @@ void AppUi::tick() {
   static uint32_t last_clock_ms = 0;
   if (millis() - last_clock_ms > 1000) {
     last_clock_ms = millis();
-    if (clock_label_) {
+    if (clock_label_ && screen_kind_ == ScreenKind::Home) {
       char tbuf[24];
       clock_format_now(tbuf, sizeof(tbuf));
       lv_label_set_text(clock_label_, tbuf);
@@ -618,13 +705,12 @@ void AppUi::tick() {
     if (screen_kind_ == ScreenKind::Home) {
       updateLeftoverHomeButton();
     }
-    // Kick viewers off leftover if somehow still open before 7:40 (e.g. clock jumped)
     if (screen_kind_ == ScreenKind::NotDone && !clock_leftover_screen_open() && !awaiting_doer_) {
       showHome();
     }
   }
 
-  if (status_label_) {
+  if (status_label_ && screen_kind_ == ScreenKind::Home) {
     const char *msg = mqtt_->connected() ? "MQTT online" : "MQTT connecting…";
     if (WiFi.status() != WL_CONNECTED) {
       msg = "Wi-Fi connecting…";
@@ -633,13 +719,20 @@ void AppUi::tick() {
   }
 }
 
+void AppUi::onLetsGo(lv_event_t *e) {
+  (void)e;
+  self_->showHome();
+}
+
 void AppUi::onKidCard(lv_event_t *e) {
+  self_->noteActivity();
   const size_t kid = reinterpret_cast<size_t>(lv_event_get_user_data(e));
   self_->showKidPage(kid, KidPage::Expectations);
 }
 
 void AppUi::onNotDoneCard(lv_event_t *e) {
   (void)e;
+  self_->noteActivity();
   if (!clock_leftover_screen_open()) {
     return;
   }
@@ -648,16 +741,19 @@ void AppUi::onNotDoneCard(lv_event_t *e) {
 
 void AppUi::onBackHome(lv_event_t *e) {
   (void)e;
+  self_->noteActivity();
   self_->showHome();
 }
 
 void AppUi::onTabExpect(lv_event_t *e) {
   (void)e;
+  self_->noteActivity();
   self_->showKidPage(self_->active_kid_, KidPage::Expectations);
 }
 
 void AppUi::onTabJobs(lv_event_t *e) {
   (void)e;
+  self_->noteActivity();
   self_->showKidPage(self_->active_kid_, KidPage::Jobs);
 }
 
@@ -668,6 +764,7 @@ void AppUi::onDone(lv_event_t *e) {
     return;
   }
   last_ms = now;
+  self_->noteActivity();
 
   const size_t job = reinterpret_cast<size_t>(lv_event_get_user_data(e));
   const size_t kid = self_->active_kid_;
@@ -681,6 +778,7 @@ void AppUi::onDone(lv_event_t *e) {
 
 void AppUi::onResetKid(lv_event_t *e) {
   (void)e;
+  self_->noteActivity();
   const size_t kid = self_->active_kid_;
   self_->state_->resetKid(kid);
   for (size_t j = 0; j < JOB_COUNT; ++j) {
@@ -698,6 +796,7 @@ void AppUi::onLeftoverDone(lv_event_t *e) {
     return;
   }
   last_ms = now;
+  self_->noteActivity();
 
   size_t owner = 0;
   size_t job = 0;
@@ -706,6 +805,7 @@ void AppUi::onLeftoverDone(lv_event_t *e) {
 }
 
 void AppUi::onDoerChosen(lv_event_t *e) {
+  self_->noteActivity();
   const size_t doer = reinterpret_cast<size_t>(lv_event_get_user_data(e));
   if (!self_->awaiting_doer_) {
     return;
@@ -715,6 +815,7 @@ void AppUi::onDoerChosen(lv_event_t *e) {
 
 void AppUi::onDoerCancel(lv_event_t *e) {
   (void)e;
+  self_->noteActivity();
   self_->awaiting_doer_ = false;
   self_->showNotDone();
 }

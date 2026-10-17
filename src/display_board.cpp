@@ -55,6 +55,8 @@ bool display_board_init() {
 
   if (g_board->getBacklight()) {
     g_board->getBacklight()->on();
+    // Start dim — UI will raise brightness after "Lets Go"
+    g_board->getBacklight()->setBrightness(8);
   }
 
   LCD *lcd = g_board->getLCD();
@@ -116,4 +118,23 @@ void display_board_loop() {
   display_board_lvgl_lock();
   lv_timer_handler();
   display_board_lvgl_unlock();
+}
+
+void display_board_set_backlight(uint8_t percent) {
+  if (!g_board || !g_board->getBacklight()) {
+    return;
+  }
+  if (percent > 100) {
+    percent = 100;
+  }
+  g_board->getBacklight()->setBrightness(percent);
+  g_board->getBacklight()->on();
+}
+
+bool display_board_touch_pressed() {
+  if (!g_board || !g_board->getTouch()) {
+    return false;
+  }
+  TouchPoint point{};
+  return g_board->getTouch()->readPoints(&point, 1, 0) > 0;
 }

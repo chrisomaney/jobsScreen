@@ -105,3 +105,8 @@ static const uint32_t MQTT_REPUBLISH_MS = 60000;
 
 // Touch debounce for Done buttons (ms)
 static const uint32_t DONE_DEBOUNCE_MS = 400;
+
+// Photo / idle screen — always on at low backlight; return here after inactivity
+static const uint32_t IDLE_TIMEOUT_MS = 3UL * 60UL * 1000UL;  // 3 minutes
+static const uint8_t BACKLIGHT_IDLE_PERCENT = 8;               // lowest comfortable
+static const uint8_t BACKLIGHT_ACTIVE_PERCENT = 90;

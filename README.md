@@ -6,11 +6,25 @@ Firmware for the **Waveshare ESP32-S3-Touch-LCD-7** (800×480). Four kids — **
 
 | Screen | Purpose |
 |--------|---------|
+| **Photo / idle** | Always-on family photo + **Lets Go**. Lowest backlight. Returns here after **3 min** idle |
 | **Home** | Four kid cards + **Jobs left to do** (locked until 7:40am) |
 | **Expectations** | That kid’s daily expectations + Done |
 | **Jobs** | That kid’s paid jobs + Done |
 | **Jobs left to do** | Opens **7:40am**. Outstanding items by kid. Done → **Who did this?** name picker |
 | **Who did this?** | Credits the helper for Rewards; marks the job done on the **owner’s** list |
+
+### Family photo on the idle screen
+
+Until you add a photo, a soft generated backdrop is used. To use your own:
+
+```bash
+pip install pillow
+python3 tools/make_idle_photo.py /path/to/family.jpg   # writes data/idle.rgb565 (800×480)
+pio run -t uploadfs                                     # upload LittleFS
+pio run -t upload                                       # firmware if needed
+```
+
+Idle backlight / timeout: `BACKLIGHT_IDLE_PERCENT`, `BACKLIGHT_ACTIVE_PERCENT`, `IDLE_TIMEOUT_MS` in `include/config.h`.
 
 ### Unlock & rewards rules
 

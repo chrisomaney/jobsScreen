@@ -12,14 +12,17 @@ enum class KidPage : uint8_t {
 class AppUi {
 public:
   void begin(JobState *state, MqttBridge *mqtt);
+  void showIdle();
   void showHome();
   void showKidPage(size_t kid, KidPage page);
   void showNotDone();
   void refreshActiveScreen();
   void tick();
+  void noteActivity();
 
 private:
   enum class ScreenKind : uint8_t {
+    Idle,
     Home,
     Kid,
     NotDone,
@@ -29,18 +32,23 @@ private:
   MqttBridge *mqtt_ = nullptr;
   size_t active_kid_ = 0;
   KidPage active_page_ = KidPage::Expectations;
-  ScreenKind screen_kind_ = ScreenKind::Home;
+  ScreenKind screen_kind_ = ScreenKind::Idle;
   uint32_t seen_revision_ = 0;
+  uint32_t last_activity_ms_ = 0;
+  bool touch_was_down_ = false;
 
-  // Pending leftover completion awaiting "who did this?"
   bool awaiting_doer_ = false;
   size_t pending_owner_ = 0;
   size_t pending_job_ = 0;
 
+  lv_obj_t *screen_idle_ = nullptr;
   lv_obj_t *screen_home_ = nullptr;
   lv_obj_t *screen_kid_ = nullptr;
   lv_obj_t *screen_not_done_ = nullptr;
   lv_obj_t *screen_doer_ = nullptr;
+
+  lv_img_dsc_t idle_img_dsc_{};
+  lv_obj_t *idle_img_ = nullptr;
 
   lv_obj_t *status_label_ = nullptr;
   lv_obj_t *clock_label_ = nullptr;
@@ -64,6 +72,7 @@ private:
   lv_obj_t *done_btns_[JOB_COUNT]{};
   lv_obj_t *job_rows_[JOB_COUNT]{};
 
+  void buildIdle();
   void buildHome();
   void buildKidScaffold();
   void buildNotDoneScaffold();
@@ -77,7 +86,10 @@ private:
   void styleTab(lv_obj_t *btn, bool active, uint32_t accent);
   void showDoerPicker(size_t owner, size_t job);
   void completeLeftover(size_t doer);
+  void applyBacklightForScreen();
+  bool isActiveSession() const;
 
+  static void onLetsGo(lv_event_t *e);
   static void onKidCard(lv_event_t *e);
   static void onNotDoneCard(lv_event_t *e);
   static void onBackHome(lv_event_t *e);

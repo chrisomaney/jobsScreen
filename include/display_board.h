@@ -11,3 +11,5 @@ bool display_board_init();
 void display_board_lvgl_lock();
 void display_board_lvgl_unlock();
 void display_board_loop();
+void display_board_set_backlight(uint8_t percent);  // 0–100, panel stays on
+bool display_board_touch_pressed();                 // for idle activity tracking
