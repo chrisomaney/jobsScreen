@@ -60,7 +60,9 @@ pio run -t upload
 pio device monitor
 ```
 
-If you see `lv_conf.h: No such file` on Windows, pull the latest from this branch (LV_CONF_PATH was removed — it breaks on Windows paths) and run `pio run -t clean` then `pio run`.
+**Windows tips**
+- If you see `lv_conf.h: No such file` or `Tried to lookup File ... as a Dir`, pull the latest branch and run `pio run -t clean` then `pio run`. Absolute `${PROJECT_DIR}` include flags break SCons on Windows — this project uses relative `-I` paths only.
+- Optional: `python -m pip install charset-normalizer` clears the harmless `RequestsDependencyWarning`.
 
 If `lib/Networking` is missing after clone, copy the framework Network library once (Arduino-ESP32 3.x link helper):
 
