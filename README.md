@@ -46,7 +46,7 @@ Idle backlight / timeout: `BACKLIGHT_IDLE_PERCENT`, `BACKLIGHT_ACTIVE_PERCENT`, 
 cp include/secrets.example.h include/secrets.h
 ```
 
-3. Edit `include/secrets.h` (Wi-Fi + MQTT).
+3. Edit `include/secrets.h` (Wi-Fi + MQTT). Use normal quotes and avoid unclosed strings, e.g. `#define WIFI_PASSWORD "yourpassword"`.
 4. Set timezone in `include/config.h` (`TIMEZONE_POSIX`, default `AEST-10`). Leftover open time is `7:40`.
 5. Build & flash:
 
@@ -54,6 +54,8 @@ cp include/secrets.example.h include/secrets.h
 pio run -t upload
 pio device monitor
 ```
+
+If you see `lv_conf.h: No such file` on Windows, pull the latest from this branch (LV_CONF_PATH was removed — it breaks on Windows paths) and run `pio run -t clean` then `pio run`.
 
 If `lib/Networking` is missing after clone, copy the framework Network library once (Arduino-ESP32 3.x link helper):
 
