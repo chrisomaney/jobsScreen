@@ -48,12 +48,30 @@ cp include/secrets.example.h include/secrets.h
 
 3. Edit `include/secrets.h` (Wi-Fi + MQTT). Use normal quotes and avoid unclosed strings, e.g. `#define WIFI_PASSWORD "yourpassword"`.
 4. Set timezone in `include/config.h` (`TIMEZONE_POSIX`, default `AEST-10`). Leftover open time is `7:40`.
-5. Build & flash:
+5. Build & flash (run from the repo root that contains `platformio.ini`):
 
 ```bash
-pio run -t upload
-pio device monitor
+pio device list
+pio run -e ws7 -t upload
+pio run -e ws7 -t monitor
 ```
+
+Env names: `ws7` (short) or `waveshare-esp32s3-touch-lcd-7`. Plain `pio run -t upload` also works and builds the default env.
+
+If you see `ProjectEnvsNotAvailableError`, you are either not in this project folder, or an old checkout is missing the `ws7` env — pull latest and confirm `platformio.ini` lists `[env:ws7]`.
+
+### Serial disconnects immediately (ESP32-S3 USB)
+
+This board uses **native USB-CDC**. Opening a serial monitor that pulses DTR/RTS resets the chip and the COM port vanishes. This repo sets `monitor_dtr = 0` / `monitor_rts = 0` so `pio run -e ws7 -t monitor` stays connected.
+
+On Windows:
+
+1. Close any other serial app (Arduino Serial Monitor, PuTTY, another `pio device monitor`).
+2. Unplug/replug USB, then `pio device list` and note the COM port.
+3. Upload with the monitor **closed**: `pio run -e ws7 -t upload`
+4. Wait ~2s after upload finishes, then: `pio run -e ws7 -t monitor`
+5. If upload fails with “port not found”, hold **BOOT**, tap **RESET**, release **BOOT**, then upload again.
+6. Prefer the repo monitor target above — avoid raw `pio device monitor` from a random folder (it skips `platformio.ini` DTR/RTS settings).
 
 If you see `lv_conf.h: No such file` on Windows, pull the latest from this branch (LV_CONF_PATH was removed — it breaks on Windows paths) and run `pio run -t clean` then `pio run`.
 

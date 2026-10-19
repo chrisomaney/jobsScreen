@@ -51,7 +51,12 @@ bool display_board_init() {
   g_board->init();
   // Full refresh draw avoids tearing on RGB panels when using LVGL partial buffers
   g_board->getLCD()->configFrameBufferNumber(2);
-  assert(g_board->begin());
+  // Soft-fail instead of assert(): a panic reboot loop kills USB-CDC and the
+  // serial port looks like it "disconnects straight away".
+  if (!g_board->begin()) {
+    Serial.println("[display] board->begin() failed");
+    return false;
+  }
 
   if (g_board->getBacklight()) {
     g_board->getBacklight()->on();
