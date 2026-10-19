@@ -18,7 +18,6 @@ public:
   void showNotDone();
   void refreshActiveScreen();
   void tick();
-  void noteActivity();
 
 private:
   enum class ScreenKind : uint8_t {
@@ -34,8 +33,8 @@ private:
   KidPage active_page_ = KidPage::Expectations;
   ScreenKind screen_kind_ = ScreenKind::Idle;
   uint32_t seen_revision_ = 0;
-  uint32_t last_activity_ms_ = 0;
-  bool touch_was_down_ = false;
+  uint32_t last_done_ms_[JOB_COUNT]{};
+  uint32_t last_leftover_ms_ = 0;
 
   bool awaiting_doer_ = false;
   size_t pending_owner_ = 0;
@@ -68,6 +67,8 @@ private:
   lv_obj_t *not_done_list_ = nullptr;
   lv_obj_t *not_done_summary_ = nullptr;
   lv_obj_t *doer_prompt_ = nullptr;
+  lv_obj_t *doer_btns_[KID_COUNT]{};
+  lv_obj_t *badge_label_ = nullptr;
 
   lv_obj_t *done_btns_[JOB_COUNT]{};
   lv_obj_t *job_rows_[JOB_COUNT]{};
@@ -88,6 +89,8 @@ private:
   void completeLeftover(size_t doer);
   void applyBacklightForScreen();
   bool isActiveSession() const;
+  void publishKid(size_t kid);
+  bool debounce(uint32_t *last_ms);
 
   static void onLetsGo(lv_event_t *e);
   static void onKidCard(lv_event_t *e);
@@ -96,6 +99,7 @@ private:
   static void onTabExpect(lv_event_t *e);
   static void onTabJobs(lv_event_t *e);
   static void onDone(lv_event_t *e);
+  static void onUndo(lv_event_t *e);
   static void onResetKid(lv_event_t *e);
   static void onLeftoverDone(lv_event_t *e);
   static void onDoerChosen(lv_event_t *e);

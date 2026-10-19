@@ -10,6 +10,28 @@ void JobState::begin() {
     loadKid(k);
   }
   loadRewards();
+  job_day_ = prefs_.getUInt("day", 0);
+}
+
+bool JobState::isAssigned(size_t kid, size_t job) {
+  if (kid >= KID_COUNT || job >= JOB_COUNT) {
+    return false;
+  }
+  return (JOBS[job].kids >> kid) & 1u;
+}
+
+bool JobState::rollDay(uint32_t job_day) {
+  if (job_day == 0 || job_day == job_day_) {
+    return false;
+  }
+  const bool first = (job_day_ == 0);
+  job_day_ = job_day;
+  prefs_.putUInt("day", job_day_);
+  if (first) {
+    return false;  // don't wipe today's ticks right after a firmware update
+  }
+  resetAll();
+  return true;
 }
 
 void JobState::loadKid(size_t kid) {
@@ -41,22 +63,20 @@ void JobState::loadRewards() {
   }
 }
 
-void JobState::persistRewards() {
-  for (size_t k = 0; k < KID_COUNT; ++k) {
-    String rk = String("rw") + String(k);
-    prefs_.putUInt(rk.c_str(), rewards_[k]);
-  }
+void JobState::persistReward(size_t kid) {
+  String rk = String("rw") + String(kid);
+  prefs_.putUInt(rk.c_str(), rewards_[kid]);
 }
 
 bool JobState::isDone(size_t kid, size_t job) const {
   if (kid >= KID_COUNT || job >= JOB_COUNT) {
     return false;
   }
-  return done_[kid][job];
+  return isAssigned(kid, job) && done_[kid][job];
 }
 
 void JobState::setDone(size_t kid, size_t job, bool done) {
-  if (kid >= KID_COUNT || job >= JOB_COUNT) {
+  if (!isAssigned(kid, job)) {
     return;
   }
   if (done_[kid][job] == done) {
@@ -88,6 +108,16 @@ void JobState::resetAll() {
   bump();
 }
 
+size_t JobState::assignedCount(size_t kid) const {
+  size_t n = 0;
+  for (size_t j = 0; j < JOB_COUNT; ++j) {
+    if (isAssigned(kid, j)) {
+      ++n;
+    }
+  }
+  return n;
+}
+
 size_t JobState::doneCount(size_t kid) const {
   size_t n = 0;
   for (size_t j = 0; j < JOB_COUNT; ++j) {
@@ -98,10 +128,10 @@ size_t JobState::doneCount(size_t kid) const {
   return n;
 }
 
-size_t JobState::requiredTotal() const {
+size_t JobState::requiredTotal(size_t kid) const {
   size_t n = 0;
   for (size_t j = 0; j < JOB_COUNT; ++j) {
-    if (JOBS[j].required_for_internet) {
+    if (JOBS[j].required_for_internet && isAssigned(kid, j)) {
       ++n;
     }
   }
@@ -119,7 +149,11 @@ size_t JobState::requiredDoneCount(size_t kid) const {
 }
 
 bool JobState::internetReady(size_t kid) const {
-  return requiredDoneCount(kid) >= requiredTotal() && requiredTotal() > 0;
+  if (kid >= KID_COUNT) {
+    return false;
+  }
+  // A kid with no required jobs assigned has nothing blocking internet.
+  return requiredDoneCount(kid) >= requiredTotal(kid);
 }
 
 uint32_t JobState::rewardTally(size_t kid) const {
@@ -134,14 +168,14 @@ void JobState::addReward(size_t doer) {
     return;
   }
   ++rewards_[doer];
-  persistRewards();
+  persistReward(doer);
   bump();
 }
 
 void JobState::resetRewards() {
   for (size_t k = 0; k < KID_COUNT; ++k) {
     rewards_[k] = 0;
+    persistReward(k);
   }
-  persistRewards();
   bump();
 }

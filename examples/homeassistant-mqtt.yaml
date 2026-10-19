@@ -72,6 +72,8 @@ automation:
             {{ trigger.payload_json.job_label }}
             (tally {{ trigger.payload_json.tally }})
 
+  # Optional: the panel now resets itself daily at DAILY_RESET_HOUR (03:00).
+  # Keep this only if you want an extra reset from Home Assistant.
   - id: kids_jobs_morning_reset
     alias: "Kids jobs — morning reset"
     trigger:
@@ -82,3 +84,4 @@ automation:
         data:
           topic: kids/cmd/reset_all
           payload: "reset"
+          retain: false

@@ -4,34 +4,44 @@
 #include <Preferences.h>
 
 // Per-kid done flags + reward tallies in RAM + NVS.
+// All counts only consider jobs assigned to that kid (JobDef::kids).
 class JobState {
 public:
   void begin();
+
+  static bool isAssigned(size_t kid, size_t job);
   bool isDone(size_t kid, size_t job) const;
   void setDone(size_t kid, size_t job, bool done);
   void resetKid(size_t kid);
   void resetAll();
 
+  size_t assignedCount(size_t kid) const;
   size_t doneCount(size_t kid) const;
+  size_t remainingCount(size_t kid) const { return assignedCount(kid) - doneCount(kid); }
+  size_t requiredTotal(size_t kid) const;
   size_t requiredDoneCount(size_t kid) const;
-  size_t requiredTotal() const;
   bool internetReady(size_t kid) const;
 
   uint32_t rewardTally(size_t kid) const;
   void addReward(size_t doer);
   void resetRewards();
 
+  // Daily rollover. Returns true if the day changed and all jobs were reset.
+  // The first call after flashing just records the day (no reset).
+  bool rollDay(uint32_t job_day);
+
   uint32_t revision() const { return revision_; }
 
 private:
   bool done_[KID_COUNT][JOB_COUNT]{};
   uint32_t rewards_[KID_COUNT]{};
+  uint32_t job_day_ = 0;
   Preferences prefs_;
   uint32_t revision_ = 1;
   void bump() { ++revision_; }
   void persistKid(size_t kid);
   void loadKid(size_t kid);
-  void persistRewards();
+  void persistReward(size_t kid);
   void loadRewards();
   static String key(size_t kid);
 };

@@ -2,18 +2,7 @@
 
 #include <ArduinoJson.h>
 
-#if __has_include("secrets.h")
-#include "secrets.h"
-#else
-#warning "secrets.h missing — copy include/secrets.example.h to include/secrets.h"
-#define WIFI_SSID "CHANGE_ME"
-#define WIFI_PASSWORD "CHANGE_ME"
-#define MQTT_HOST "192.168.1.10"
-#define MQTT_PORT 1883
-#define MQTT_USER ""
-#define MQTT_PASSWORD ""
-#define MQTT_CLIENT_ID "kids-jobs-panel"
-#endif
+#include "app_secrets.h"
 
 namespace {
 
@@ -73,10 +62,19 @@ void MqttBridge::ensureConnected() {
   }
 
   client_.publish(MQTT_STATUS_TOPIC, "online", true);
-  client_.subscribe((String(MQTT_BASE) + "/cmd/reset_all").c_str());
-  client_.subscribe((String(MQTT_BASE) + "/cmd/reset_rewards").c_str());
+
+  // Clear any *retained* command first (empty retained payload deletes it),
+  // otherwise a retained reset would wipe everything on every reconnect.
+  String cmds[KID_COUNT + 2];
+  cmds[0] = String(MQTT_BASE) + "/cmd/reset_all";
+  cmds[1] = String(MQTT_BASE) + "/cmd/reset_rewards";
   for (size_t k = 0; k < KID_COUNT; ++k) {
-    String t = String(MQTT_BASE) + "/" + KIDS[k].slug + "/cmd/reset";
+    cmds[k + 2] = String(MQTT_BASE) + "/" + KIDS[k].slug + "/cmd/reset";
+  }
+  for (const String &t : cmds) {
+    client_.publish(t.c_str(), "", true);
+  }
+  for (const String &t : cmds) {
     client_.subscribe(t.c_str());
   }
   publishAll();
@@ -85,7 +83,9 @@ void MqttBridge::ensureConnected() {
 
 void MqttBridge::handleMessage(char *topic, byte *payload, unsigned int length) {
   (void)payload;
-  (void)length;
+  if (length == 0) {
+    return;  // empty payload = our own "clear retained" publish; ignore
+  }
   const String t(topic);
   Serial.printf("[mqtt] cmd %s\n", t.c_str());
 
@@ -116,7 +116,7 @@ void MqttBridge::handleMessage(char *topic, byte *payload, unsigned int length) 
 }
 
 void MqttBridge::publishJob(size_t kid, size_t job) {
-  if (!client_.connected() || kid >= KID_COUNT || job >= JOB_COUNT) {
+  if (!client_.connected() || !JobState::isAssigned(kid, job)) {
     return;
   }
   const char *val = state_->isDone(kid, job) ? "done" : "todo";
@@ -134,12 +134,12 @@ void MqttBridge::publishKidSummary(size_t kid) {
   JsonDocument doc;
   const size_t done = state_->doneCount(kid);
   const size_t req_done = state_->requiredDoneCount(kid);
-  const size_t req_total = state_->requiredTotal();
+  const size_t req_total = state_->requiredTotal(kid);
   doc["done"] = done;
-  doc["total"] = JOB_COUNT;
+  doc["total"] = state_->assignedCount(kid);
   doc["required_done"] = req_done;
   doc["required_total"] = req_total;
-  doc["pct"] = req_total ? (req_done * 100) / req_total : 0;
+  doc["pct"] = req_total ? (req_done * 100) / req_total : 100;
   doc["internet"] = ready;
   doc["name"] = KIDS[kid].name;
   doc["rewards"] = state_->rewardTally(kid);
