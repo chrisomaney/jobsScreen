@@ -51,11 +51,15 @@ cp include/secrets.example.h include/secrets.h
 5. Build & flash:
 
 ```bash
-pio run -t upload
-pio device monitor
+pio run -e ws7 -t upload
+pio run -e ws7 -t monitor
 ```
 
-If you see `lv_conf.h: No such file` on Windows, pull the latest from this branch (LV_CONF_PATH was removed — it breaks on Windows paths) and run `pio run -t clean` then `pio run`.
+Use `-e ws7` (short env). Prefer `pio run -e ws7 -t monitor` over bare `pio device monitor` — this project disables DTR/RTS so opening the monitor does not reset the ESP32-S3 USB-CDC port (which looks like “disconnects straight away”).
+
+After flash: press **RST** (or power-cycle). You should see `=== Kids Jobs Sign-off ===` then `[boot] setup complete`, and the idle screen (dim backlight). If the panel was reboot-looping / blank, rebuild from this branch — an earlier flush bug passed `x2/y2` into `drawBitmap` (expects width/height) and corrupted the RGB framebuffer on first LVGL refresh.
+
+If you see `lv_conf.h: No such file` on Windows, pull the latest (LV_CONF_PATH was removed — it breaks on Windows paths) and run `pio run -e ws7 -t clean` then `pio run -e ws7`.
 
 If `lib/Networking` is missing after clone, copy the framework Network library once (Arduino-ESP32 3.x link helper):
 
