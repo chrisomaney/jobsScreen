@@ -33,6 +33,7 @@ private:
   KidPage active_page_ = KidPage::Expectations;
   ScreenKind screen_kind_ = ScreenKind::Idle;
   uint32_t seen_revision_ = 0;
+  uint32_t seen_config_revision_ = 0;
   uint32_t last_done_ms_[JOB_COUNT]{};
   uint32_t last_leftover_ms_ = 0;
 
