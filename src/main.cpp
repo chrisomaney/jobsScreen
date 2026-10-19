@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <Network.h>
 #include <WiFi.h>
+#include <esp_system.h>
 
 #include "clock_util.h"
 #include "config.h"
@@ -43,17 +44,21 @@ void connectWifi() {
 }  // namespace
 
 void setup() {
+  // USB-CDC on ESP32-S3 re-enumerates after reset; give the host a moment
+  // before printing so the first lines are not lost / do not race the port.
   Serial.begin(115200);
-  delay(200);
+  delay(1500);
   Serial.println();
   Serial.println("=== Kids Jobs Sign-off ===");
+  Serial.printf("[boot] reset reason %u\n", static_cast<unsigned>(esp_reset_reason()));
 
   g_state.begin();
 
   if (!display_board_init()) {
-    Serial.println("FATAL: display init failed");
+    Serial.println("FATAL: display init failed — staying alive for serial debug");
     while (true) {
       delay(1000);
+      Serial.println("[boot] display still failed");
     }
   }
 
