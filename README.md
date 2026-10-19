@@ -38,6 +38,12 @@ Idle timeout and look: `IDLE_TIMEOUT_MS` and `IDLE_PHOTO_BRIGHTNESS_PCT` in `inc
 - **Daily reset:** the panel clears everyone’s ticks itself at `DAILY_RESET_HOUR:DAILY_RESET_MINUTE` (default 03:00 local), even if Home Assistant / MQTT is down. Reward tallies are kept. The HA 05:30 `reset_all` automation is optional now.
 - **Who has which job:** the last column of each job in `include/config.h` is a kid mask (`ALL_KIDS` by default, or e.g. `KID_XAVIER | KID_JAX`). Counts, progress and the internet unlock only consider a kid’s assigned jobs.
 
+## Web app: choose who does what
+
+`webapp/index.html` is a single-file web app for your phone. It connects to the broker over MQTT WebSockets, shows every job with a tick box per kid plus a **Needed for internet** switch, and saves changes to the panel. The panel stores them in flash, so they survive reboots, and updates its screens straight away. It also shows each kid's live progress and has buttons to clear today's ticks or zero reward tallies.
+
+Setup steps are in [`webapp/README.md`](webapp/README.md). `include/config.h` still sets the defaults; the web app's changes override them on the panel.
+
 ## Hardware
 
 - [Waveshare ESP32-S3-Touch-LCD-7](https://www.waveshare.com/wiki/ESP32-S3-Touch-LCD-7)
@@ -85,6 +91,8 @@ On boot the panel prints `[boot] reset reason: ...` (e.g. `PANIC`, `interrupt wa
 | `kids/{slug}/rewards/tally` | integer | retained — help credits |
 | `kids/rewards/event` | JSON | not retained — `{doer, owner, job, …}` |
 | `kids/panel/status` | `online` / `offline` | LWT |
+| `kids/config/state` | JSON | retained — kids, jobs, who has each job, “needed for internet” flags (read by the web app) |
+| `kids/config/set` | JSON | from the web app — `{"jobs":{"feed_cat":{"kids":["jax"],"required":true}}}` (partial updates OK) |
 
 Slugs: `xavier`, `presley`, `jax`, `banx`.
 
@@ -99,12 +107,21 @@ The internet unlock is just a retained `kids/{slug}/internet` message, so anyone
 user kids-panel
 topic readwrite kids/#
 
-# Home Assistant: read everything, may only send admin commands
+# Home Assistant + add-ons need full access when ACLs are on (HA requirement)
 user homeassistant
+topic readwrite #
+user addons
+topic readwrite #
+
+# Web app (parents' phones): read state, send config + admin commands only
+user parents
 topic read kids/#
+topic write kids/config/set
 topic write kids/cmd/#
 topic write kids/+/cmd/#
 ```
+
+With the Mosquitto add-on, enable `customize` (folder `mosquitto`), put `acl_file /share/mosquitto/accesscontrollist` in `/share/mosquitto/acl.conf`, and the rules above in `/share/mosquitto/accesscontrollist`.
 
 (Plain MQTT on 1883 isn’t encrypted — keep the broker on your trusted LAN / VLAN, not the kids’ one.)
 

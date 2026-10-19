@@ -21,7 +21,7 @@ void MqttBridge::begin(JobState *state) {
   g_mqtt = this;
   client_.setClient(wifi_);
   client_.setServer(MQTT_HOST, MQTT_PORT);
-  client_.setBufferSize(1024);
+  client_.setBufferSize(4096);  // config JSON is ~2.5 KB
   client_.setCallback(mqttTrampoline);
 }
 
@@ -65,11 +65,12 @@ void MqttBridge::ensureConnected() {
 
   // Clear any *retained* command first (empty retained payload deletes it),
   // otherwise a retained reset would wipe everything on every reconnect.
-  String cmds[KID_COUNT + 2];
+  String cmds[KID_COUNT + 3];
   cmds[0] = String(MQTT_BASE) + "/cmd/reset_all";
   cmds[1] = String(MQTT_BASE) + "/cmd/reset_rewards";
+  cmds[2] = MQTT_CONFIG_SET;
   for (size_t k = 0; k < KID_COUNT; ++k) {
-    cmds[k + 2] = String(MQTT_BASE) + "/" + KIDS[k].slug + "/cmd/reset";
+    cmds[k + 3] = String(MQTT_BASE) + "/" + KIDS[k].slug + "/cmd/reset";
   }
   for (const String &t : cmds) {
     client_.publish(t.c_str(), "", true);
@@ -82,13 +83,21 @@ void MqttBridge::ensureConnected() {
 }
 
 void MqttBridge::handleMessage(char *topic, byte *payload, unsigned int length) {
-  (void)payload;
   if (length == 0) {
     return;  // empty payload = our own "clear retained" publish; ignore
   }
   const String t(topic);
   Serial.printf("[mqtt] cmd %s\n", t.c_str());
 
+  if (t == MQTT_CONFIG_SET) {
+    if (state_->applyConfigJson(reinterpret_cast<const char *>(payload), length)) {
+      Serial.println("[mqtt] job config updated from web app");
+      publishAll();  // assignments change counts + internet on/off
+    } else {
+      publishConfig();  // nothing changed — still echo so the web app can confirm
+    }
+    return;
+  }
   if (t == String(MQTT_BASE) + "/cmd/reset_all") {
     state_->resetAll();
     publishAll();
@@ -177,7 +186,16 @@ void MqttBridge::publishRewardEvent(size_t doer, size_t owner, size_t job) {
   publishRewardTally(doer);
 }
 
+void MqttBridge::publishConfig() {
+  if (!client_.connected()) {
+    return;
+  }
+  const String json = state_->configStateJson();
+  client_.publish(MQTT_CONFIG_STATE, json.c_str(), true);
+}
+
 void MqttBridge::publishAll() {
+  publishConfig();
   for (size_t k = 0; k < KID_COUNT; ++k) {
     for (size_t j = 0; j < JOB_COUNT; ++j) {
       publishJob(k, j);

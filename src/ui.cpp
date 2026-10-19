@@ -59,6 +59,7 @@ void AppUi::begin(JobState *state, MqttBridge *mqtt) {
   state_ = state;
   mqtt_ = mqtt;
   seen_revision_ = state_->revision();
+  seen_config_revision_ = state_->configRevision();
   buildIdle();
   buildHome();
   buildKidScaffold();
@@ -618,7 +619,8 @@ void AppUi::completeLeftover(size_t doer) {
   const size_t owner = pending_owner_;
   const size_t job = pending_job_;
   awaiting_doer_ = false;
-  if (doer == owner || doer >= KID_COUNT || state_->isDone(owner, job)) {
+  if (doer == owner || doer >= KID_COUNT || !JobState::isAssigned(owner, job) ||
+      state_->isDone(owner, job)) {
     showNotDone();  // owner can't self-credit; job may have been done meanwhile
     return;
   }
@@ -702,9 +704,15 @@ void AppUi::tick() {
   }
 
   const uint32_t rev = state_->revision();
-  if (rev != seen_revision_) {
+  const uint32_t cfg_rev = state_->configRevision();
+  if (rev != seen_revision_ || cfg_rev != seen_config_revision_) {
+    const bool cfg_changed = cfg_rev != seen_config_revision_;
     seen_revision_ = rev;
+    seen_config_revision_ = cfg_rev;
     if (!awaiting_doer_ && screen_kind_ != ScreenKind::Idle) {
+      if (cfg_changed && screen_kind_ == ScreenKind::Kid) {
+        rebuildJobList();  // job list for this kid changed (web app)
+      }
       refreshActiveScreen();
     }
   }

@@ -9,7 +9,19 @@ class JobState {
 public:
   void begin();
 
+  // Who-does-what + "needed for internet" are editable at runtime (web app via
+  // MQTT kids/config/set). Defaults come from JOBS[] in config.h.
   static bool isAssigned(size_t kid, size_t job);
+  static bool isRequired(size_t job);
+  static uint8_t assignedMask(size_t job);
+
+  // Apply {"jobs":{"<id>":{"kids":["xavier",..],"required":true},..}}.
+  // Partial updates allowed; unknown ids ignored. Returns true if anything changed.
+  bool applyConfigJson(const char *json, size_t len);
+  // Full config + kid/job catalogue for the web app (kids/config/state).
+  String configStateJson() const;
+  uint32_t configRevision() const { return config_revision_; }
+
   bool isDone(size_t kid, size_t job) const;
   void setDone(size_t kid, size_t job, bool done);
   void resetKid(size_t kid);
@@ -38,6 +50,9 @@ private:
   uint32_t job_day_ = 0;
   Preferences prefs_;
   uint32_t revision_ = 1;
+  uint32_t config_revision_ = 1;
+  void persistConfig();
+  void loadConfig();
   void bump() { ++revision_; }
   void persistKid(size_t kid);
   void loadKid(size_t kid);

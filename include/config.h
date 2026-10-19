@@ -108,6 +108,11 @@ static const int DAILY_RESET_MINUTE = 0;
 static const char *MQTT_BASE = "kids";
 static const char *MQTT_STATUS_TOPIC = "kids/panel/status";
 static const char *MQTT_REWARDS_EVENT = "kids/rewards/event";
+// Web app job chooser (see webapp/):
+//   kids/config/state  retained JSON — kids, jobs, who has each job, required flags
+//   kids/config/set    JSON from the web app — {"jobs":{"feed_cat":{"kids":["jax"],"required":true}}}
+static const char *MQTT_CONFIG_STATE = "kids/config/state";
+static const char *MQTT_CONFIG_SET = "kids/config/set";
 
 // UI colours (RGB565-friendly hex for LVGL)
 static const uint32_t COL_BG         = 0x1A2332;
