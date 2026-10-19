@@ -1,12 +1,26 @@
 #pragma once
+#ifndef LV_CONF_H
+#define LV_CONF_H
+#endif
 
 #include <stdint.h>
 
 #define LV_COLOR_DEPTH 16
 #define LV_COLOR_16_SWAP 0
 
-#define LV_MEM_CUSTOM 0
-#define LV_MEM_SIZE (64 * 1024U)
+// LVGL heap lives in PSRAM (8 MB on this board). The old 64 KB internal pool
+// ran out when the "Jobs left to do" list was full (4 kids x 18 rows).
+#define LV_MEM_CUSTOM 1
+#define LV_MEM_CUSTOM_INCLUDE "lv_mem_psram.h"
+#define LV_MEM_CUSTOM_ALLOC lv_psram_alloc
+#define LV_MEM_CUSTOM_FREE lv_psram_free
+#define LV_MEM_CUSTOM_REALLOC lv_psram_realloc
+
+// LVGL needs a millisecond time source, otherwise its timers (screen refresh,
+// touch read, animations) never advance.
+#define LV_TICK_CUSTOM 1
+#define LV_TICK_CUSTOM_INCLUDE "esp_timer.h"
+#define LV_TICK_CUSTOM_SYS_TIME_EXPR ((uint32_t)(esp_timer_get_time() / 1000LL))
 
 #define LV_DISP_DEF_REFR_PERIOD 16
 #define LV_INDEV_DEF_READ_PERIOD 16

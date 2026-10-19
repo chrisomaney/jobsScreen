@@ -6,12 +6,14 @@ Firmware for the **Waveshare ESP32-S3-Touch-LCD-7** (800×480). Four kids — **
 
 | Screen | Purpose |
 |--------|---------|
-| **Photo / idle** | Always-on family photo + **Lets Go**. Lowest backlight. Returns here after **3 min** idle |
+| **Photo / idle** | Always-on family photo + **Let's Go** (or tap anywhere). Returns here after **3 min** idle |
 | **Home** | Four kid cards + **Jobs left to do** (locked until 7:40am) |
 | **Expectations** | That kid’s daily expectations + Done |
 | **Jobs** | That kid’s paid jobs + Done |
+
+**Done buttons:** tap to mark done; **hold** a green (done) button to undo. **Reset** on a kid’s page also needs a hold.
 | **Jobs left to do** | Opens **7:40am**. Outstanding items by kid. Done → **Who did this?** name picker |
-| **Who did this?** | Credits the helper for Rewards; marks the job done on the **owner’s** list |
+| **Who did this?** | Credits the helper for Rewards; marks the job done on the **owner’s** list. The owner isn’t offered (no self-credit) |
 
 ### Family photo on the idle screen
 
@@ -24,13 +26,17 @@ pio run -t uploadfs                                     # upload LittleFS
 pio run -t upload                                       # firmware if needed
 ```
 
-Idle backlight / timeout: `BACKLIGHT_IDLE_PERCENT`, `BACKLIGHT_ACTIVE_PERCENT`, `IDLE_TIMEOUT_MS` in `include/config.h`.
+Idle timeout and look: `IDLE_TIMEOUT_MS` and `IDLE_PHOTO_BRIGHTNESS_PCT` in `include/config.h`.
+
+> The Waveshare 7" backlight is **on/off only** (driven through the CH422G IO expander, no PWM), so it can’t be dimmed in hardware. The idle photo is darkened in software instead (`IDLE_PHOTO_BRIGHTNESS_PCT`, default 60). Set it to `0` to switch the backlight fully off when idle (tap the screen to wake).
 
 ### Unlock & rewards rules
 
 - **Internet ON** MQTT only when **that kid’s own** required jobs are all done. Helping someone else does **not** unlock the helper’s devices if their list is still incomplete.
 - Completing via **Jobs left to do** + name picker publishes a **rewards** event/tally for the person who pressed their name (for your Rewards / HA automations).
 - Own-screen Done still works anytime (no reward credit — that’s for the leftover help flow).
+- **Daily reset:** the panel clears everyone’s ticks itself at `DAILY_RESET_HOUR:DAILY_RESET_MINUTE` (default 03:00 local), even if Home Assistant / MQTT is down. Reward tallies are kept. The HA 05:30 `reset_all` automation is optional now.
+- **Who has which job:** the last column of each job in `include/config.h` is a kid mask (`ALL_KIDS` by default, or e.g. `KID_XAVIER | KID_JAX`). Counts, progress and the internet unlock only consider a kid’s assigned jobs.
 
 ## Hardware
 
@@ -57,13 +63,17 @@ pio device monitor
 
 If you see `lv_conf.h: No such file` on Windows, pull the latest from this branch (LV_CONF_PATH was removed — it breaks on Windows paths) and run `pio run -t clean` then `pio run`.
 
-If `lib/Networking` is missing after clone, copy the framework Network library once (Arduino-ESP32 3.x link helper):
+`lib/Network` is a vendored copy of the Arduino-ESP32 3.0.7 Network library (link helper for `WiFi` → `Network.h`). If it’s ever missing:
 
 ```bash
-mkdir -p lib/Networking
-cp -a ~/.platformio/packages/framework-arduinoespressif32/libraries/Network/. lib/Networking/
+mkdir -p lib/Network
+cp -a ~/.platformio/packages/framework-arduinoespressif32/libraries/Network/. lib/Network/
 # ensure library.properties name=Network
 ```
+
+### Debugging crashes
+
+On boot the panel prints `[boot] reset reason: ...` (e.g. `PANIC`, `interrupt watchdog`, `brownout`). The native USB port disconnects when the chip resets, so the crash backtrace is often lost there — use the board’s **UART** USB-C port with `pio device monitor` to see the full panic output (decoded by `esp32_exception_decoder`). Use a good 5 V / 2 A supply; brownouts look like random reboots.
 
 ## MQTT topics
 
@@ -78,7 +88,25 @@ cp -a ~/.platformio/packages/framework-arduinoespressif32/libraries/Network/. li
 
 Slugs: `xavier`, `presley`, `jax`, `banx`.
 
-**Admin commands:** `kids/{slug}/cmd/reset`, `kids/cmd/reset_all`, `kids/cmd/reset_rewards`.
+**Admin commands:** `kids/{slug}/cmd/reset`, `kids/cmd/reset_all`, `kids/cmd/reset_rewards` (any non-empty payload, don’t retain). The panel clears any retained message on these topics when it connects.
+
+### Lock down MQTT
+
+The internet unlock is just a retained `kids/{slug}/internet` message, so anyone who can publish to your broker could send `on`. Give the panel its own Mosquitto user and restrict who can write `kids/#`, e.g. in Mosquitto’s `acl_file`:
+
+```
+# panel: the only writer of state topics
+user kids-panel
+topic readwrite kids/#
+
+# Home Assistant: read everything, may only send admin commands
+user homeassistant
+topic read kids/#
+topic write kids/cmd/#
+topic write kids/+/cmd/#
+```
+
+(Plain MQTT on 1883 isn’t encrypted — keep the broker on your trusted LAN / VLAN, not the kids’ one.)
 
 ### Home Assistant sketch
 

@@ -1,5 +1,6 @@
 #include "idle_photo.h"
 
+#include "config.h"
 #include "display_board.h"
 
 #include <Arduino.h>
@@ -61,6 +62,21 @@ bool load_from_littlefs(uint16_t *buf) {
   return true;
 }
 
+// The backlight can't dim on this board, so darken the photo itself.
+void apply_brightness(uint16_t *buf, uint8_t pct) {
+  if (pct >= 100) {
+    return;
+  }
+  const size_t n = static_cast<size_t>(LCD_H_RES) * LCD_V_RES;
+  for (size_t i = 0; i < n; ++i) {
+    const uint16_t p = buf[i];
+    const uint16_t r = static_cast<uint16_t>((((p >> 11) & 0x1F) * pct) / 100);
+    const uint16_t g = static_cast<uint16_t>((((p >> 5) & 0x3F) * pct) / 100);
+    const uint16_t b = static_cast<uint16_t>(((p & 0x1F) * pct) / 100);
+    buf[i] = static_cast<uint16_t>((r << 11) | (g << 5) | b);
+  }
+}
+
 }  // namespace
 
 bool idle_photo_begin(lv_img_dsc_t *out_dsc) {
@@ -83,6 +99,9 @@ bool idle_photo_begin(lv_img_dsc_t *out_dsc) {
   if (!load_from_littlefs(buf)) {
     fill_fallback_backdrop(buf);
   }
+  if (IDLE_PHOTO_BRIGHTNESS_PCT > 0) {
+    apply_brightness(buf, IDLE_PHOTO_BRIGHTNESS_PCT);
+  }
 
   dsc_.header.always_zero = 0;
   dsc_.header.w = LCD_H_RES;
@@ -97,7 +116,7 @@ bool idle_photo_begin(lv_img_dsc_t *out_dsc) {
 
 void idle_photo_end() {
   if (pixels_) {
-    free(pixels_);
+    heap_caps_free(pixels_);
     pixels_ = nullptr;
   }
   ready_ = false;
