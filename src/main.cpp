@@ -44,11 +44,20 @@ void connectWifi() {
 
 void setup() {
   Serial.begin(115200);
-  delay(200);
+  // USB-CDC on ESP32-S3 often drops the first lines unless we wait briefly.
+  const uint32_t serial_wait_start = millis();
+  while (!Serial && millis() - serial_wait_start < 2500) {
+    delay(10);
+  }
+  delay(100);
   Serial.println();
   Serial.println("=== Kids Jobs Sign-off ===");
+  Serial.printf("[boot] free heap=%u  psram=%u\n",
+                static_cast<unsigned>(ESP.getFreeHeap()),
+                static_cast<unsigned>(ESP.getFreePsram()));
 
   g_state.begin();
+  Serial.println("[boot] job state ready");
 
   if (!display_board_init()) {
     Serial.println("FATAL: display init failed");
@@ -56,15 +65,19 @@ void setup() {
       delay(1000);
     }
   }
+  Serial.println("[boot] display ready");
 
   g_mqtt.begin(&g_state);
+  Serial.println("[boot] building UI…");
   g_ui.begin(&g_state, &g_mqtt);
+  Serial.println("[boot] UI ready — idle photo screen (dim backlight)");
 
   connectWifi();
   if (WiFi.status() == WL_CONNECTED) {
     clock_begin_ntp();
   }
   g_mqtt.publishAll();  // no-op until connected; reconnect path publishes
+  Serial.println("[boot] setup complete");
 }
 
 void loop() {

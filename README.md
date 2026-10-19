@@ -18,10 +18,15 @@ Firmware for the **Waveshare ESP32-S3-Touch-LCD-7** (800×480). Four kids — **
 Until you add a photo, a soft generated backdrop is used. To use your own:
 
 ```bash
-pip install pillow
-python3 tools/make_idle_photo.py /path/to/family.jpg   # writes data/idle.rgb565 (800×480)
-pio run -t uploadfs                                     # upload LittleFS
-pio run -t upload                                       # firmware if needed
+python -m pip install pillow
+
+# Windows — use a normal drive path (not /c:/...):
+python tools/make_idle_photo.py C:\1\photo.jpg
+# or:
+python tools/make_idle_photo.py "C:/1/photo.jpg"
+
+pio run -t uploadfs    # uploads data/idle.rgb565 to the panel
+pio run -t upload      # firmware if needed
 ```
 
 Idle backlight / timeout: `BACKLIGHT_IDLE_PERCENT`, `BACKLIGHT_ACTIVE_PERCENT`, `IDLE_TIMEOUT_MS` in `include/config.h`.
@@ -48,22 +53,49 @@ cp include/secrets.example.h include/secrets.h
 
 3. Edit `include/secrets.h` (Wi-Fi + MQTT). Use normal quotes and avoid unclosed strings, e.g. `#define WIFI_PASSWORD "yourpassword"`.
 4. Set timezone in `include/config.h` (`TIMEZONE_POSIX`, default `AEST-10`). Leftover open time is `7:40`.
-5. Build & flash:
+5. Build & flash (default env is `ws7`):
 
 ```bash
-pio run -t upload
-pio device monitor
+pio run -e ws7 -t upload
+pio device monitor -b 115200
 ```
 
-If you see `lv_conf.h: No such file` on Windows, pull the latest from this branch (LV_CONF_PATH was removed — it breaks on Windows paths) and run `pio run -t clean` then `pio run`.
+**Windows (do this — do not use Downloads unzip folders)**
 
-If `lib/Networking` is missing after clone, copy the framework Network library once (Arduino-ESP32 3.x link helper):
+`ProjectEnvsNotAvailableError` means your folder still has the **old** env name (`waveshare-esp32s3-touch-lcd-7`) and **no** `[env:ws7]`. Build logs that say `Resolving waveshare-esp32s3-touch-lcd-7` are the same problem.
 
-```bash
-mkdir -p lib/Networking
-cp -a ~/.platformio/packages/framework-arduinoespressif32/libraries/Network/. lib/Networking/
-# ensure library.properties name=Network
+**One command** (PowerShell as Admin not required):
+
+```powershell
+# Wipes C:\js, clones the fix branch, verifies [env:ws7], builds, uploads
+irm https://raw.githubusercontent.com/chrisomaney/jobsScreen/cursor/fix-ws7-env-upload-43dc/tools/windows_flash.ps1 -OutFile $env:TEMP\js_flash.ps1
+powershell -ExecutionPolicy Bypass -File $env:TEMP\js_flash.ps1 -Bootstrap
 ```
+
+Or if you already cloned this branch somewhere:
+
+```powershell
+cd C:\js
+.\FLASH.bat bootstrap
+```
+
+Before upload you **must** see:
+
+```
+OK: [env:ws7] found in C:\js\platformio.ini
+```
+
+and during build:
+
+```
+[extra] PIOENV      = ws7
+```
+
+If you still see `waveshare-esp32s3-touch-lcd-7`, you opened the wrong folder in Cursor/VS Code — **File → Open Folder → `C:\js`**, toolbar env **ws7**.
+
+Optional: `python -m pip install charset-normalizer` clears the harmless Requests warning.
+
+`lib/Network` is already in the repo (Arduino-ESP32 3.x WiFi dependency).
 
 ## MQTT topics
 

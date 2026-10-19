@@ -1,4 +1,9 @@
-#pragma once
+/**
+ * LVGL v8 configuration for the kids jobs panel (800x480).
+ * Must define LV_CONF_H so lv_conf_internal.h knows the include succeeded.
+ */
+#ifndef LV_CONF_H
+#define LV_CONF_H
 
 #include <stdint.h>
 
@@ -75,3 +80,5 @@
 #define LV_THEME_DEFAULT_DARK 1
 #define LV_THEME_DEFAULT_GROW 0
 #define LV_THEME_DEFAULT_TRANSITION_TIME 80
+
+#endif /* LV_CONF_H */
