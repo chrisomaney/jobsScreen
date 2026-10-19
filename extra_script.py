@@ -13,6 +13,22 @@ lv_conf = root / "include" / "lv_conf.h"
 network_src = root / "lib" / "Network" / "src"
 include_dir = root / "include"
 
+# Loud banner so Windows logs prove which tree/env is building.
+print("=" * 60)
+print(f"[extra] PROJECT_DIR = {root}")
+print(f"[extra] PIOENV      = {pioenv}")
+print("=" * 60)
+if pioenv != "ws7":
+    raise SystemExit(
+        f"[extra] Refusing env '{pioenv}'. Use: pio run -e ws7\n"
+        "If PlatformIO IDE shows waveshare-esp32s3-touch-lcd-7, you opened an OLD folder."
+    )
+if "Downloads" in str(root) and "jobsScreen-" in str(root):
+    print(
+        "[extra] WARNING: project is under a long Downloads\\jobsScreen-... path. "
+        "Windows MAX_PATH often breaks LVGL. Prefer C:\\js"
+    )
+
 # Remove any previously mirrored Network headers from include/ — they break LDF
 # (headers alone satisfy #include <Network.h> so lib/Network is never linked).
 for name in (

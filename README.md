@@ -60,33 +60,38 @@ pio run -e ws7 -t upload
 pio device monitor -b 115200
 ```
 
-**Windows tips (important)**
+**Windows (do this — do not use Downloads unzip folders)**
 
-Env name is **`ws7`** (short on purpose — Windows `MAX_PATH` breaks LVGL with the long env name).
+`ProjectEnvsNotAvailableError` means your folder still has the **old** env name (`waveshare-esp32s3-touch-lcd-7`) and **no** `[env:ws7]`. Build logs that say `Resolving waveshare-esp32s3-touch-lcd-7` are the same problem.
 
-`ProjectEnvsNotAvailableError` / unknown env `ws7` means your `C:\js` copy is still on **old main** (`[env:waveshare-esp32s3-touch-lcd-7]` only). Re-clone or pull this branch:
+**One command** (PowerShell as Admin not required):
 
 ```powershell
-# Fresh short-path clone (keep path short: C:\js)
-cd C:\
-Remove-Item -Recurse -Force C:\js -ErrorAction SilentlyContinue
-git clone -b cursor/fix-ws7-env-upload-43dc https://github.com/chrisomaney/jobsScreen.git js
-cd C:\js
-
-# Must print: default_envs = ws7
-Select-String -Path platformio.ini -Pattern "default_envs|env:ws7"
-
-copy include\secrets.example.h include\secrets.h
-# edit Wi-Fi / MQTT in include\secrets.h
-
-Remove-Item -Recurse -Force .pio -ErrorAction SilentlyContinue
-pio run -e ws7 -t upload
-pio device monitor -b 115200
+# Wipes C:\js, clones the fix branch, verifies [env:ws7], builds, uploads
+irm https://raw.githubusercontent.com/chrisomaney/jobsScreen/cursor/fix-ws7-env-upload-43dc/tools/windows_flash.ps1 -OutFile $env:TEMP\js_flash.ps1
+powershell -ExecutionPolicy Bypass -File $env:TEMP\js_flash.ps1 -Bootstrap
 ```
 
-After this lands on `main`, you can clone without `-b …`.
+Or if you already cloned this branch somewhere:
 
-In Cursor/VS Code with the PlatformIO extension: open **`C:\js`**, toolbar target **ws7**. Do not open an old Downloads unzip folder.
+```powershell
+cd C:\js
+.\FLASH.bat bootstrap
+```
+
+Before upload you **must** see:
+
+```
+OK: [env:ws7] found in C:\js\platformio.ini
+```
+
+and during build:
+
+```
+[extra] PIOENV      = ws7
+```
+
+If you still see `waveshare-esp32s3-touch-lcd-7`, you opened the wrong folder in Cursor/VS Code — **File → Open Folder → `C:\js`**, toolbar env **ws7**.
 
 Optional: `python -m pip install charset-normalizer` clears the harmless Requests warning.
 
