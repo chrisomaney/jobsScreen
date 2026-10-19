@@ -48,12 +48,16 @@ cp include/secrets.example.h include/secrets.h
 
 3. Edit `include/secrets.h` (Wi-Fi + MQTT). Use normal quotes and avoid unclosed strings, e.g. `#define WIFI_PASSWORD "yourpassword"`.
 4. Set timezone in `include/config.h` (`TIMEZONE_POSIX`, default `AEST-10`). Leftover open time is `7:40`.
-5. Build & flash:
+5. Build & flash (run from the repo root that contains `platformio.ini`):
 
 ```bash
-pio run -t upload
-pio device monitor
+pio run -e ws7 -t upload
+pio device monitor -b 115200
 ```
+
+Env names: `ws7` (short) or `waveshare-esp32s3-touch-lcd-7`. Plain `pio run -t upload` also works and builds the default env.
+
+If you see `ProjectEnvsNotAvailableError`, you are either not in this project folder, or an old checkout is missing the `ws7` env — pull latest and confirm `platformio.ini` lists `[env:ws7]`.
 
 If you see `lv_conf.h: No such file` on Windows, pull the latest from this branch (LV_CONF_PATH was removed — it breaks on Windows paths) and run `pio run -t clean` then `pio run`.
 
