@@ -16,7 +16,12 @@ void JobState::loadKid(size_t kid) {
   if (kid >= KID_COUNT) {
     return;
   }
-  String blob = prefs_.getString(key(kid).c_str(), "");
+  // Avoid Preferences ERROR spam on first boot when keys are absent.
+  const String k = key(kid);
+  String blob;
+  if (prefs_.isKey(k.c_str())) {
+    blob = prefs_.getString(k.c_str(), "");
+  }
   for (size_t j = 0; j < JOB_COUNT; ++j) {
     done_[kid][j] = (j < blob.length() && blob[j] == '1');
   }

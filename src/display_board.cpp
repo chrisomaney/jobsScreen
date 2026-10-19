@@ -15,16 +15,15 @@ lv_indev_drv_t indev_drv;
 lv_color_t *buf1 = nullptr;
 lv_color_t *buf2 = nullptr;
 
-// Simple mutex via portMUX for LVGL from Arduino loop only — single-threaded draw.
-portMUX_TYPE lvgl_mux = portMUX_INITIALIZER_UNLOCKED;
-
+// drawBitmap(x, y, width, height, …) — NOT x2/y2. Passing end coords corrupts the
+// RGB framebuffer on the first partial refresh and reboot-loops the S3.
 void lvgl_flush_cb(lv_disp_drv_t *drv, const lv_area_t *area, lv_color_t *color_p) {
   auto *lcd = static_cast<LCD *>(drv->user_data);
   const int x = area->x1;
   const int y = area->y1;
   const int w = area->x2 - area->x1 + 1;
   const int h = area->y2 - area->y1 + 1;
-  lcd->drawBitmap(x, y, x + w, y + h, reinterpret_cast<const uint8_t *>(color_p));
+  lcd->drawBitmap(x, y, w, h, reinterpret_cast<const uint8_t *>(color_p));
   lv_disp_flush_ready(drv);
 }
 
@@ -46,31 +45,61 @@ void lvgl_touch_cb(lv_indev_drv_t *drv, lv_indev_data_t *data) {
 
 bool display_board_init() {
   Serial.println("[display] init Waveshare ESP32-S3-Touch-LCD-7");
+  Serial.printf("[display] free heap=%u  psram=%u\n",
+                static_cast<unsigned>(ESP.getFreeHeap()),
+                static_cast<unsigned>(ESP.getFreePsram()));
 
   g_board = new Board();
   g_board->init();
-  // Full refresh draw avoids tearing on RGB panels when using LVGL partial buffers
-  g_board->getLCD()->configFrameBufferNumber(2);
-  assert(g_board->begin());
+
+  LCD *lcd_pre = g_board->getLCD();
+  if (!lcd_pre) {
+    Serial.println("[display] LCD missing before begin");
+    return false;
+  }
+
+  // Do NOT call configFrameBufferNumber(2) here — that enables avoid-tear dual FB
+  // mode which needs the official LVGL port flush path. Simple drawBitmap + partial
+  // buffers matches ESP32_Display_Panel simple_port with AVOID_TEARING_MODE=0.
+  // Board header already sets RGB bounce buffer (width * 10) for ESP32-S3.
+  auto *bus = lcd_pre->getBus();
+  if (bus && bus->getBasicAttributes().type == ESP_PANEL_BUS_TYPE_RGB) {
+    auto *rgb = static_cast<BusRGB *>(bus);
+    // Ensure bounce buffer is set (board default is width*10; bump if zero).
+    const size_t bounce = static_cast<size_t>(lcd_pre->getFrameWidth()) * 10;
+    rgb->configRGB_BounceBufferSize(bounce);
+    Serial.printf("[display] RGB bounce buffer size=%u\n", static_cast<unsigned>(bounce));
+  }
+
+  // Soft-fail: assert()/abort reboot-loops and kills USB-CDC ("disconnects straight away").
+  if (!g_board->begin()) {
+    Serial.println("[display] board->begin() failed");
+    return false;
+  }
+  Serial.println("[display] board began");
 
   if (g_board->getBacklight()) {
     g_board->getBacklight()->on();
     // Start dim — UI will raise brightness after "Lets Go"
-    g_board->getBacklight()->setBrightness(8);
+    g_board->getBacklight()->setBrightness(12);
   }
 
   LCD *lcd = g_board->getLCD();
   Touch *touch = g_board->getTouch();
   if (!lcd) {
-    Serial.println("[display] LCD missing");
+    Serial.println("[display] LCD missing after begin");
     return false;
   }
 
   lv_init();
+  Serial.println("[display] lvgl init");
 
+  // Partial buffers in internal DMA SRAM (official simple_port default).
   const size_t buf_pixels = LCD_H_RES * 40;
-  buf1 = static_cast<lv_color_t *>(heap_caps_malloc(buf_pixels * sizeof(lv_color_t), MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL));
-  buf2 = static_cast<lv_color_t *>(heap_caps_malloc(buf_pixels * sizeof(lv_color_t), MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL));
+  buf1 = static_cast<lv_color_t *>(
+      heap_caps_malloc(buf_pixels * sizeof(lv_color_t), MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL));
+  buf2 = static_cast<lv_color_t *>(
+      heap_caps_malloc(buf_pixels * sizeof(lv_color_t), MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL));
   if (!buf1) {
     buf1 = static_cast<lv_color_t *>(heap_caps_malloc(buf_pixels * sizeof(lv_color_t), MALLOC_CAP_SPIRAM));
   }
@@ -81,6 +110,7 @@ bool display_board_init() {
     Serial.println("[display] LVGL buffer alloc failed");
     return false;
   }
+  Serial.printf("[display] lvgl buffers ok (buf2=%s)\n", buf2 ? "yes" : "single");
 
   lv_disp_draw_buf_init(&draw_buf, buf1, buf2, buf_pixels);
 
@@ -107,17 +137,13 @@ bool display_board_init() {
 }
 
 void display_board_lvgl_lock() {
-  portENTER_CRITICAL(&lvgl_mux);
+  // Single-threaded from Arduino loop — no critical section (that starved the WDT).
 }
 
-void display_board_lvgl_unlock() {
-  portEXIT_CRITICAL(&lvgl_mux);
-}
+void display_board_lvgl_unlock() {}
 
 void display_board_loop() {
-  display_board_lvgl_lock();
   lv_timer_handler();
-  display_board_lvgl_unlock();
 }
 
 void display_board_set_backlight(uint8_t percent) {

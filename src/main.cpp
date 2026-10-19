@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <Network.h>
 #include <WiFi.h>
+#include <esp_system.h>
 
 #include "clock_util.h"
 #include "config.h"
@@ -43,28 +44,44 @@ void connectWifi() {
 }  // namespace
 
 void setup() {
+  // USB-CDC on ESP32-S3 re-enumerates after reset; wait so early logs are not lost.
   Serial.begin(115200);
-  delay(200);
+  delay(1500);
   Serial.println();
   Serial.println("=== Kids Jobs Sign-off ===");
-
-  g_state.begin();
-
-  if (!display_board_init()) {
-    Serial.println("FATAL: display init failed");
-    while (true) {
-      delay(1000);
-    }
+  Serial.printf("[boot] reset reason %u  heap=%u  psram=%u\n",
+                static_cast<unsigned>(esp_reset_reason()),
+                static_cast<unsigned>(ESP.getFreeHeap()),
+                static_cast<unsigned>(ESP.getFreePsram()));
+  if (ESP.getFreePsram() == 0) {
+    Serial.println("[boot] WARNING: PSRAM is 0 — RGB panel / idle photo will fail. "
+                   "Need OPI PSRAM (qio_opi) in platformio.ini / Tools menu.");
   }
 
-  g_mqtt.begin(&g_state);
-  g_ui.begin(&g_state, &g_mqtt);
+  g_state.begin();
+  Serial.println("[boot] job state ready");
 
+  if (!display_board_init()) {
+    Serial.println("FATAL: display init failed — staying alive for serial debug");
+    while (true) {
+      delay(2000);
+      Serial.println("[boot] display still failed (not reboot-looping)");
+    }
+  }
+  Serial.println("[boot] display ready");
+
+  g_mqtt.begin(&g_state);
+  Serial.println("[boot] building UI…");
+  g_ui.begin(&g_state, &g_mqtt);
+  Serial.println("[boot] UI ready — idle screen");
+
+  // Bring UI up before Wi-Fi so a bad secrets.h / long connect cannot look like a blank boot.
   connectWifi();
   if (WiFi.status() == WL_CONNECTED) {
     clock_begin_ntp();
   }
   g_mqtt.publishAll();  // no-op until connected; reconnect path publishes
+  Serial.println("[boot] setup complete");
 }
 
 void loop() {

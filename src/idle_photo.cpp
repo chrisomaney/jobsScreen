@@ -70,10 +70,14 @@ bool idle_photo_begin(lv_img_dsc_t *out_dsc) {
   }
 
   const size_t bytes = static_cast<size_t>(LCD_H_RES) * LCD_V_RES * sizeof(uint16_t);
-  pixels_ = static_cast<uint8_t *>(heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
-  if (!pixels_) {
-    pixels_ = static_cast<uint8_t *>(heap_caps_malloc(bytes, MALLOC_CAP_DEFAULT));
+  // Full-screen RGB565 needs ~768KB — only safe in PSRAM on this board.
+  if (ESP.getFreePsram() < bytes) {
+    Serial.printf("[idle] skip photo (need %u PSRAM, have %u)\n",
+                  static_cast<unsigned>(bytes),
+                  static_cast<unsigned>(ESP.getFreePsram()));
+    return false;
   }
+  pixels_ = static_cast<uint8_t *>(heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
   if (!pixels_) {
     Serial.println("[idle] pixel buffer alloc failed");
     return false;
