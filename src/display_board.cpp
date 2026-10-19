@@ -51,13 +51,18 @@ bool display_board_init() {
   g_board->init();
   // Full refresh draw avoids tearing on RGB panels when using LVGL partial buffers
   g_board->getLCD()->configFrameBufferNumber(2);
-  assert(g_board->begin());
+  if (!g_board->begin()) {
+    Serial.println("[display] board begin failed");
+    return false;
+  }
+  Serial.println("[display] board began");
 
   if (g_board->getBacklight()) {
     g_board->getBacklight()->on();
     // Start dim — UI will raise brightness after "Lets Go"
     g_board->getBacklight()->setBrightness(8);
   }
+  Serial.println("[display] backlight on (dim)");
 
   LCD *lcd = g_board->getLCD();
   Touch *touch = g_board->getTouch();
@@ -67,6 +72,7 @@ bool display_board_init() {
   }
 
   lv_init();
+  Serial.println("[display] lvgl init");
 
   const size_t buf_pixels = LCD_H_RES * 40;
   buf1 = static_cast<lv_color_t *>(heap_caps_malloc(buf_pixels * sizeof(lv_color_t), MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL));
@@ -81,6 +87,7 @@ bool display_board_init() {
     Serial.println("[display] LVGL buffer alloc failed");
     return false;
   }
+  Serial.printf("[display] lvgl buffers ok (buf2=%s)\n", buf2 ? "yes" : "single");
 
   lv_disp_draw_buf_init(&draw_buf, buf1, buf2, buf_pixels);
 
