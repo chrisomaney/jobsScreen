@@ -158,3 +158,5 @@ See `examples/homeassistant-mqtt.yaml` for more.
 **Paid jobs:** feed cat, feed dog, dishes away, dishes wash, water plants, bins out, bathroom.
 
 Edit lists / `required_for_internet` in `include/config.h`.
+
+Each expectation and paid job shows a **picture icon** on the panel (and matching emoji in the web app) so kids who can’t read yet — like Jax — can still tell them apart. To redraw icons after editing the art: `python3 tools/gen_job_icons.py`.
