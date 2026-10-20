@@ -67,6 +67,8 @@ pio run -t upload
 pio device monitor
 ```
 
+If you see `fatal error: Network.h: No such file or directory`, pull the latest `main` (the include paths in `platformio.ini` are now relative, so project folders with spaces or Windows paths work), then run `pio run -t clean` and build again.
+
 If you see `lv_conf.h: No such file` on Windows, pull the latest from this branch (LV_CONF_PATH was removed — it breaks on Windows paths) and run `pio run -t clean` then `pio run`.
 
 `lib/Network` is a vendored copy of the Arduino-ESP32 3.0.7 Network library (link helper for `WiFi` → `Network.h`). If it’s ever missing:
