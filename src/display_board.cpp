@@ -96,11 +96,15 @@ bool display_board_init() {
   lv_disp_drv_register(&disp_drv);
 
   if (touch) {
+    // GT911 may have logged "Unable to initialize the I2C address" — that is
+    // expected here (RST is on the CH422G expander, not an ESP GPIO). Board
+    // begin already succeeded and read TouchPad_ID, so touch is usable.
     lv_indev_drv_init(&indev_drv);
     indev_drv.type = LV_INDEV_TYPE_POINTER;
     indev_drv.read_cb = lvgl_touch_cb;
     indev_drv.user_data = touch;
     lv_indev_drv_register(&indev_drv);
+    Serial.println("[display] touch GT911 ok (I2C-address warning is benign)");
   } else {
     Serial.println("[display] warning: no touch controller");
   }
