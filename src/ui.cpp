@@ -6,6 +6,7 @@
 #include "clock_util.h"
 #include "display_board.h"
 #include "idle_photo.h"
+#include "job_icons.h"
 
 AppUi *AppUi::self_ = nullptr;
 
@@ -423,24 +424,28 @@ void AppUi::rebuildJobList() {
 
     lv_obj_t *row = lv_obj_create(job_list_);
     job_rows_[j] = row;
-    lv_obj_set_size(row, 760, 56);
+    // Taller rows so Jax can spot the picture next to each job / expectation
+    lv_obj_set_size(row, 760, 64);
     lv_obj_set_style_bg_color(row, c(COL_CARD), 0);
     lv_obj_set_style_radius(row, 10, 0);
     lv_obj_set_style_border_side(row, LV_BORDER_SIDE_LEFT, 0);
     lv_obj_set_style_border_width(row, 4, 0);
     lv_obj_set_style_border_color(row, c(accent), 0);
-    lv_obj_set_style_pad_left(row, 14, 0);
+    lv_obj_set_style_pad_left(row, 10, 0);
     lv_obj_set_style_pad_right(row, 8, 0);
     lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
 
+    lv_obj_t *icon = job_icon_create(row, JOBS[j].id);
+    lv_obj_align(icon, LV_ALIGN_LEFT_MID, 0, 0);
+
     lv_obj_t *name = make_label(row, JOBS[j].label, &lv_font_montserrat_18, COL_TEXT);
-    lv_obj_align(name, LV_ALIGN_LEFT_MID, 0, JOBS[j].detail[0] ? -9 : 0);
+    lv_obj_align(name, LV_ALIGN_LEFT_MID, 56, JOBS[j].detail[0] ? -9 : 0);
 
     if (JOBS[j].detail[0]) {
       lv_obj_t *det = make_label(row, JOBS[j].detail, &lv_font_montserrat_14, COL_MUTED);
       lv_label_set_long_mode(det, LV_LABEL_LONG_DOT);
-      lv_obj_set_width(det, 520);
-      lv_obj_align(det, LV_ALIGN_LEFT_MID, 0, 12);
+      lv_obj_set_width(det, 470);
+      lv_obj_align(det, LV_ALIGN_LEFT_MID, 56, 12);
     }
 
     lv_obj_t *btn = lv_btn_create(row);
@@ -564,20 +569,23 @@ void AppUi::rebuildNotDoneList() {
           continue;
         }
         lv_obj_t *row = lv_obj_create(not_done_list_);
-        lv_obj_set_size(row, 760, 52);
+        lv_obj_set_size(row, 760, 60);
         lv_obj_set_style_bg_color(row, c(COL_CARD), 0);
         lv_obj_set_style_radius(row, 8, 0);
         lv_obj_set_style_border_side(row, LV_BORDER_SIDE_LEFT, 0);
         lv_obj_set_style_border_width(row, 4, 0);
         lv_obj_set_style_border_color(row, c(accent), 0);
-        lv_obj_set_style_pad_left(row, 12, 0);
+        lv_obj_set_style_pad_left(row, 10, 0);
         lv_obj_set_style_pad_right(row, 8, 0);
         lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
+
+        lv_obj_t *icon = job_icon_create(row, JOBS[j].id);
+        lv_obj_align(icon, LV_ALIGN_LEFT_MID, 0, 0);
 
         char line[96];
         snprintf(line, sizeof(line), "[%s]  %s", tag, JOBS[j].label);
         lv_obj_t *lbl = make_label(row, line, &lv_font_montserrat_16, COL_TEXT);
-        lv_obj_align(lbl, LV_ALIGN_LEFT_MID, 0, 0);
+        lv_obj_align(lbl, LV_ALIGN_LEFT_MID, 56, 0);
 
         lv_obj_t *btn = lv_btn_create(row);
         lv_obj_set_size(btn, 120, 40);

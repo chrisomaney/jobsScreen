@@ -147,8 +147,8 @@
   .job:last-child { border-bottom: 0; }
   .job.changed { background: color-mix(in srgb, var(--surface) 88%, var(--accent) 12%); }
   .jl { min-width: 0; }
-  .jname { font-weight: 700; overflow-wrap: anywhere; }
-  .jname::first-letter { text-transform: uppercase; }
+  .jname { font-weight: 700; overflow-wrap: anywhere; display: flex; align-items: center; gap: 8px; }
+  .jicon { font-size: 1.35em; line-height: 1; flex: none; }
   .jsub { display: flex; gap: 6px; align-items: center; margin-top: 4px; flex-wrap: wrap; }
   .req {
     border: 1px solid var(--line); background: transparent; border-radius: 999px;
@@ -290,6 +290,15 @@
 
   const ICON_CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
   const ICON_WIFI = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M2 8.8a15 15 0 0 1 20 0M5.5 12.4a10 10 0 0 1 13 0M9 16a5 5 0 0 1 6 0"/><circle cx="12" cy="19.5" r="1.2" fill="currentColor"/></svg>';
+
+  // Same pictures as the panel — helps when parents are assigning jobs with Jax
+  const JOB_EMOJI = {
+    make_bed: '🛏️', tidy_floor: '🧹', washing_in_baskets: '🧺', towels_on_hooks: '🧼',
+    brush_teeth: '🪥', get_dressed: '👕', socks_on: '🧦', medication: '💊',
+    loungeroom_tidy: '🛋️', table_cleared: '🍽️', lights_fans_off: '💡',
+    feed_cat: '🐱', feed_dog: '🐶', dishes_away: '🍽️', dishes_wash: '🫧',
+    water_plants: '🌱', bins_out: '🗑️', bathroom: '🛁',
+  };
 
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -455,7 +464,7 @@
         const nobody = d.kids.size === 0 ? '<span class="nobody">Nobody - hidden on panel</span>' : '';
         return `<div class="job${changed.has(j.id) ? ' changed' : ''}">
           <div class="jl">
-            <div class="jname">${esc(j.label)}</div>
+            <div class="jname"><span class="jicon" aria-hidden="true">${JOB_EMOJI[j.id] || '✅'}</span> ${esc(j.label)}</div>
             <div class="jsub">
               <button type="button" class="req" data-req="${esc(j.id)}" aria-pressed="${d.required}"
                 title="Must be done before internet unlocks">${ICON_WIFI}${d.required
