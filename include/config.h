@@ -16,6 +16,7 @@ static const KidProfile KIDS[] = {
   {"Presley", "presley"},
   {"Jax",     "jax"},
   {"Banx",    "banx"},
+  {"Hazel",   "hazel"},
 };
 static const size_t KID_COUNT = sizeof(KIDS) / sizeof(KIDS[0]);
 static_assert(KID_COUNT <= 8, "kid masks are 8-bit");
@@ -26,6 +27,7 @@ static const uint8_t KID_XAVIER  = 1u << 0;
 static const uint8_t KID_PRESLEY = 1u << 1;
 static const uint8_t KID_JAX     = 1u << 2;
 static const uint8_t KID_BANX    = 1u << 3;
+static const uint8_t KID_HAZEL   = 1u << 4;
 static const uint8_t ALL_KIDS    = 0xFF;
 
 // ---------------------------------------------------------------------------

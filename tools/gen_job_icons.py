@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Generate kid-friendly job pictograms as LVGL ALPHA_8BIT C arrays.
+"""Generate kid-friendly job line icons as LVGL ALPHA_8BIT C arrays.
+
+Outline / stroke style (not filled blobs) so shapes are easier to recognise
+— especially for kids who can't read yet (e.g. Jax).
 
 Run: python3 tools/gen_job_icons.py
 Writes: src/job_icons.cpp
@@ -13,6 +16,7 @@ from PIL import Image, ImageDraw
 
 SIZE = 40
 BADGE = 48
+STROKE = 3
 OUT = Path(__file__).resolve().parents[1] / "src" / "job_icons.cpp"
 
 
@@ -46,171 +50,208 @@ def to_c_array(name: str, img: Image.Image) -> str:
 
 
 def draw_make_bed() -> Image.Image:
+    """Bed frame + pillow outline."""
     img, d = blank()
-    d.rounded_rectangle((4, 18, 36, 34), radius=3, fill=255)
-    d.rounded_rectangle((6, 12, 18, 22), radius=3, fill=220)
-    d.rectangle((4, 30, 36, 34), fill=180)
+    d.rounded_rectangle((5, 20, 35, 32), radius=3, outline=255, width=STROKE)
+    d.rounded_rectangle((7, 12, 18, 22), radius=3, outline=255, width=STROKE)
+    d.line((5, 32, 35, 32), fill=255, width=STROKE)
     return img
 
 
 def draw_tidy_floor() -> Image.Image:
+    """Broom: handle + brush."""
     img, d = blank()
-    d.polygon([(20, 4), (24, 4), (18, 28), (14, 28)], fill=255)
-    d.polygon([(8, 28), (32, 28), (34, 36), (6, 36)], fill=220)
+    d.line((22, 5, 14, 28), fill=255, width=STROKE)
+    d.polygon([(8, 28), (32, 28), (34, 35), (6, 35)], outline=255)
+    d.line((8, 28, 32, 28), fill=255, width=STROKE)
+    d.line((10, 31, 12, 35), fill=255, width=2)
+    d.line((16, 31, 17, 35), fill=255, width=2)
+    d.line((22, 31, 23, 35), fill=255, width=2)
+    d.line((28, 31, 30, 35), fill=255, width=2)
     return img
 
 
 def draw_washing() -> Image.Image:
+    """Laundry basket with handles."""
     img, d = blank()
-    d.rounded_rectangle((8, 10, 32, 34), radius=4, fill=255)
-    d.arc((10, 4, 30, 18), 200, 340, fill=200, width=3)
-    d.ellipse((14, 16, 20, 22), fill=120)
-    d.ellipse((22, 20, 28, 26), fill=120)
+    d.rounded_rectangle((9, 12, 31, 34), radius=4, outline=255, width=STROKE)
+    d.arc((11, 5, 29, 17), 200, 340, fill=255, width=STROKE)
+    d.ellipse((14, 18, 20, 24), outline=255, width=2)
+    d.ellipse((22, 22, 28, 28), outline=255, width=2)
     return img
 
 
 def draw_towels() -> Image.Image:
+    """Towel hanging on a hook rail."""
     img, d = blank()
-    d.line((8, 8, 32, 8), fill=200, width=3)
-    d.rounded_rectangle((12, 8, 28, 34), radius=2, fill=255)
-    d.line((14, 14, 26, 14), fill=160, width=2)
-    d.line((14, 20, 26, 20), fill=160, width=2)
+    d.line((7, 8, 33, 8), fill=255, width=STROKE)
+    d.rounded_rectangle((13, 8, 27, 34), radius=2, outline=255, width=STROKE)
+    d.line((16, 16, 24, 16), fill=255, width=2)
+    d.line((16, 22, 24, 22), fill=255, width=2)
     return img
 
 
 def draw_brush_teeth() -> Image.Image:
+    """Toothbrush: bristles + handle."""
     img, d = blank()
-    d.rounded_rectangle((8, 8, 18, 28), radius=3, fill=255)
+    d.rounded_rectangle((9, 7, 19, 26), radius=3, outline=255, width=STROKE)
     for y in (10, 14, 18, 22):
-        d.rectangle((10, y, 16, y + 2), fill=140)
-    d.rectangle((11, 28, 15, 36), fill=220)
+        d.line((11, y, 17, y), fill=255, width=2)
+    d.line((14, 26, 14, 36), fill=255, width=STROKE)
     return img
 
 
 def draw_get_dressed() -> Image.Image:
+    """T-shirt outline."""
     img, d = blank()
-    d.polygon(
-        [(20, 6), (28, 12), (34, 12), (28, 18), (28, 34), (12, 34), (12, 18), (6, 12), (12, 12)],
-        fill=255,
-    )
+    pts = [
+        (20, 7),
+        (27, 12),
+        (34, 12),
+        (28, 18),
+        (28, 34),
+        (12, 34),
+        (12, 18),
+        (6, 12),
+        (13, 12),
+    ]
+    d.line(pts + [pts[0]], fill=255, width=STROKE, joint="curve")
+    d.arc((14, 6, 26, 14), 0, 180, fill=255, width=STROKE)
     return img
 
 
 def draw_socks() -> Image.Image:
+    """Sock outline."""
     img, d = blank()
-    d.rounded_rectangle((14, 4, 26, 22), radius=4, fill=255)
-    d.pieslice((8, 16, 30, 36), 20, 200, fill=255)
-    d.rectangle((14, 4, 26, 10), fill=180)
+    d.rounded_rectangle((15, 5, 25, 20), radius=3, outline=255, width=STROKE)
+    d.arc((8, 16, 30, 36), 20, 200, fill=255, width=STROKE)
+    d.line((15, 20, 15, 28), fill=255, width=STROKE)
+    d.line((25, 20, 26, 24), fill=255, width=STROKE)
+    d.line((15, 6, 25, 6), fill=255, width=2)
     return img
 
 
 def draw_medication() -> Image.Image:
+    """Pill / capsule outline, split down the middle."""
     img, d = blank()
-    d.pieslice((8, 12, 32, 28), 90, 270, fill=255)
-    d.pieslice((8, 12, 32, 28), 270, 90, fill=180)
-    d.rectangle((8, 18, 32, 22), fill=255)
+    d.rounded_rectangle((10, 14, 30, 26), radius=6, outline=255, width=STROKE)
+    d.line((20, 14, 20, 26), fill=255, width=STROKE)
     return img
 
 
 def draw_lounge() -> Image.Image:
+    """Sofa outline."""
     img, d = blank()
-    d.rounded_rectangle((6, 14, 34, 28), radius=4, fill=255)
-    d.rectangle((6, 22, 34, 28), fill=200)
-    d.rectangle((8, 28, 12, 34), fill=180)
-    d.rectangle((28, 28, 32, 34), fill=180)
-    d.rounded_rectangle((6, 10, 12, 22), radius=2, fill=220)
-    d.rounded_rectangle((28, 10, 34, 22), radius=2, fill=220)
+    d.rounded_rectangle((7, 16, 33, 28), radius=3, outline=255, width=STROKE)
+    d.rounded_rectangle((7, 10, 13, 22), radius=2, outline=255, width=STROKE)
+    d.rounded_rectangle((27, 10, 33, 22), radius=2, outline=255, width=STROKE)
+    d.line((10, 28, 10, 34), fill=255, width=STROKE)
+    d.line((30, 28, 30, 34), fill=255, width=STROKE)
     return img
 
 
 def draw_table() -> Image.Image:
+    """Table with plate on top."""
     img, d = blank()
-    d.ellipse((10, 10, 30, 20), fill=255)
-    d.ellipse((14, 12, 26, 18), outline=100, width=2)
-    d.rectangle((8, 22, 32, 26), fill=220)
-    d.rectangle((12, 26, 16, 34), fill=180)
-    d.rectangle((24, 26, 28, 34), fill=180)
+    d.ellipse((11, 8, 29, 18), outline=255, width=STROKE)
+    d.ellipse((15, 11, 25, 16), outline=255, width=2)
+    d.line((7, 22, 33, 22), fill=255, width=STROKE)
+    d.line((12, 22, 12, 34), fill=255, width=STROKE)
+    d.line((28, 22, 28, 34), fill=255, width=STROKE)
     return img
 
 
 def draw_lights() -> Image.Image:
+    """Light bulb outline with rays."""
     img, d = blank()
-    d.ellipse((10, 6, 30, 26), fill=255)
-    d.rectangle((16, 24, 24, 30), fill=200)
-    d.rectangle((14, 30, 26, 34), fill=160)
-    d.line((20, 2, 20, 6), fill=200, width=2)
-    d.line((6, 14, 10, 14), fill=200, width=2)
-    d.line((30, 14, 34, 14), fill=200, width=2)
+    d.ellipse((11, 6, 29, 24), outline=255, width=STROKE)
+    d.rectangle((16, 24, 24, 29), outline=255, width=STROKE)
+    d.line((17, 31, 23, 31), fill=255, width=STROKE)
+    d.line((20, 2, 20, 6), fill=255, width=2)
+    d.line((6, 14, 11, 14), fill=255, width=2)
+    d.line((29, 14, 34, 14), fill=255, width=2)
+    d.line((9, 7, 12, 10), fill=255, width=2)
+    d.line((28, 10, 31, 7), fill=255, width=2)
     return img
 
 
 def draw_cat() -> Image.Image:
+    """Cat face: round head, pointed ears, eyes, whiskers."""
     img, d = blank()
-    d.ellipse((8, 12, 32, 34), fill=255)
-    d.polygon([(10, 14), (14, 4), (18, 14)], fill=255)
-    d.polygon([(22, 14), (26, 4), (30, 14)], fill=255)
-    d.ellipse((14, 20, 18, 24), fill=40)
-    d.ellipse((22, 20, 26, 24), fill=40)
-    d.polygon([(20, 24), (18, 28), (22, 28)], fill=100)
+    d.ellipse((8, 12, 32, 34), outline=255, width=STROKE)
+    d.line([(10, 14), (14, 4), (18, 14)], fill=255, width=STROKE)
+    d.line([(22, 14), (26, 4), (30, 14)], fill=255, width=STROKE)
+    d.ellipse((14, 20, 18, 24), outline=255, width=2)
+    d.ellipse((22, 20, 26, 24), outline=255, width=2)
+    d.line((6, 22, 12, 24), fill=255, width=2)
+    d.line((6, 26, 12, 26), fill=255, width=2)
+    d.line((28, 24, 34, 22), fill=255, width=2)
+    d.line((28, 26, 34, 26), fill=255, width=2)
     return img
 
 
 def draw_dog() -> Image.Image:
+    """Dog face: round head, floppy ears, eyes, nose."""
     img, d = blank()
-    d.ellipse((8, 12, 32, 34), fill=255)
-    d.ellipse((4, 14, 14, 28), fill=200)
-    d.ellipse((26, 14, 36, 28), fill=200)
-    d.ellipse((14, 20, 18, 24), fill=40)
-    d.ellipse((22, 20, 26, 24), fill=40)
-    d.ellipse((17, 26, 23, 32), fill=140)
+    d.ellipse((9, 12, 31, 34), outline=255, width=STROKE)
+    d.ellipse((3, 14, 13, 28), outline=255, width=STROKE)
+    d.ellipse((27, 14, 37, 28), outline=255, width=STROKE)
+    d.ellipse((14, 20, 18, 24), outline=255, width=2)
+    d.ellipse((22, 20, 26, 24), outline=255, width=2)
+    d.ellipse((17, 26, 23, 32), outline=255, width=2)
     return img
 
 
 def draw_dishes_away() -> Image.Image:
+    """Stack of plates (side view outlines)."""
     img, d = blank()
-    d.ellipse((8, 20, 32, 34), fill=180)
-    d.ellipse((8, 14, 32, 28), fill=220)
-    d.ellipse((8, 8, 32, 22), fill=255)
-    d.ellipse((14, 11, 26, 17), outline=100, width=2)
+    d.ellipse((8, 22, 32, 34), outline=255, width=STROKE)
+    d.ellipse((8, 15, 32, 27), outline=255, width=STROKE)
+    d.ellipse((8, 8, 32, 20), outline=255, width=STROKE)
     return img
 
 
 def draw_dishes_wash() -> Image.Image:
+    """Bowl with soap bubbles."""
     img, d = blank()
-    d.ellipse((6, 14, 34, 34), fill=255)
-    d.ellipse((12, 18, 28, 28), outline=80, width=2)
-    d.ellipse((10, 6, 16, 12), fill=200)
-    d.ellipse((18, 4, 26, 12), fill=180)
-    d.ellipse((26, 8, 32, 14), fill=200)
+    d.arc((6, 14, 34, 36), 0, 180, fill=255, width=STROKE)
+    d.line((6, 24, 34, 24), fill=255, width=STROKE)
+    d.ellipse((10, 6, 16, 12), outline=255, width=2)
+    d.ellipse((18, 3, 26, 11), outline=255, width=2)
+    d.ellipse((27, 7, 33, 13), outline=255, width=2)
     return img
 
 
 def draw_plants() -> Image.Image:
+    """Pot + leafy plant."""
     img, d = blank()
-    d.polygon([(12, 28), (28, 28), (24, 36), (16, 36)], fill=200)
-    d.ellipse((14, 8, 26, 22), fill=255)
-    d.ellipse((8, 12, 18, 24), fill=220)
-    d.ellipse((22, 12, 32, 24), fill=220)
-    d.ellipse((28, 4, 34, 10), fill=160)
+    d.polygon([(13, 26), (27, 26), (24, 35), (16, 35)], outline=255)
+    d.line([(13, 26), (27, 26), (24, 35), (16, 35), (13, 26)], fill=255, width=STROKE)
+    d.ellipse((14, 8, 26, 22), outline=255, width=STROKE)
+    d.ellipse((7, 12, 17, 24), outline=255, width=STROKE)
+    d.ellipse((23, 12, 33, 24), outline=255, width=STROKE)
+    d.line((20, 22, 20, 26), fill=255, width=2)
     return img
 
 
 def draw_bins() -> Image.Image:
+    """Wheelie bin with lid + handle."""
     img, d = blank()
-    d.rounded_rectangle((10, 12, 30, 34), radius=3, fill=255)
-    d.rectangle((8, 10, 32, 14), fill=200)
-    d.line((16, 16, 16, 30), fill=80, width=2)
-    d.line((24, 16, 24, 30), fill=80, width=2)
-    d.arc((14, 4, 26, 14), 0, 180, fill=180, width=3)
+    d.rounded_rectangle((11, 13, 29, 34), radius=3, outline=255, width=STROKE)
+    d.line((8, 13, 32, 13), fill=255, width=STROKE)
+    d.arc((14, 4, 26, 14), 0, 180, fill=255, width=STROKE)
+    d.line((17, 17, 17, 30), fill=255, width=2)
+    d.line((23, 17, 23, 30), fill=255, width=2)
     return img
 
 
 def draw_bathroom() -> Image.Image:
+    """Bathtub with tap."""
     img, d = blank()
-    d.ellipse((6, 16, 34, 34), fill=255)
-    d.rectangle((8, 14, 32, 22), fill=255)
-    d.rectangle((18, 6, 22, 16), fill=200)
-    d.ellipse((16, 4, 24, 10), fill=180)
+    d.arc((6, 16, 34, 36), 0, 180, fill=255, width=STROKE)
+    d.line((6, 22, 34, 22), fill=255, width=STROKE)
+    d.line((20, 8, 20, 16), fill=255, width=STROKE)
+    d.ellipse((16, 4, 24, 10), outline=255, width=STROKE)
     return img
 
 
@@ -302,7 +343,8 @@ def main() -> None:
     parts.append("  if (img) {")
     parts.append("    lv_obj_t *pic = lv_img_create(badge);")
     parts.append("    lv_img_set_src(pic, img);")
-    parts.append("    lv_obj_set_style_img_recolor(pic, lv_color_hex(0x0F172A), 0);")
+    # White strokes on the coloured badge — clearer line-icon look for Jax
+    parts.append("    lv_obj_set_style_img_recolor(pic, lv_color_hex(0xFFFFFF), 0);")
     parts.append("    lv_obj_set_style_img_recolor_opa(pic, LV_OPA_COVER, 0);")
     parts.append("    lv_obj_center(pic);")
     parts.append("    lv_obj_clear_flag(pic, LV_OBJ_FLAG_CLICKABLE);")
@@ -312,7 +354,7 @@ def main() -> None:
     parts.append("")
 
     OUT.write_text("\n".join(parts), encoding="utf-8")
-    print(f"Wrote {OUT} ({len(ICONS)} icons, {SIZE}x{SIZE})")
+    print(f"Wrote {OUT} ({len(ICONS)} line icons, {SIZE}x{SIZE})")
 
 
 if __name__ == "__main__":

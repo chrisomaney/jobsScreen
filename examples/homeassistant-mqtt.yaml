@@ -1,4 +1,4 @@
-# Home Assistant snippets — Xavier / Presley / Jax / Banx
+# Home Assistant snippets — Xavier / Presley / Jax / Banx / Hazel
 # Internet unlock is per-kid (own list complete). Rewards tally is for leftover helpers.
 
 mqtt:
@@ -19,6 +19,10 @@ mqtt:
       state_topic: "kids/banx/internet"
       payload_on: "on"
       payload_off: "off"
+    - name: "Hazel Internet Ready"
+      state_topic: "kids/hazel/internet"
+      payload_on: "on"
+      payload_off: "off"
 
   sensor:
     - name: "Xavier Rewards Tally"
@@ -29,6 +33,8 @@ mqtt:
       state_topic: "kids/jax/rewards/tally"
     - name: "Banx Rewards Tally"
       state_topic: "kids/banx/rewards/tally"
+    - name: "Hazel Rewards Tally"
+      state_topic: "kids/hazel/rewards/tally"
     - name: "Xavier Jobs Progress"
       state_topic: "kids/xavier/progress"
       value_template: "{{ value_json.pct }}"

@@ -158,17 +158,21 @@ void AppUi::buildHome() {
   clock_label_ = make_label(screen_home_, "", &lv_font_montserrat_14, COL_MUTED);
   lv_obj_align(clock_label_, LV_ALIGN_TOP_RIGHT, -16, 46);
 
-  const int card_w = 360;
-  const int card_h = 130;
-  const int gap = 16;
+  // 3-across grid so five kids fit above the leftover bar on 800×480
+  const int cols = 3;
+  const int card_w = 236;
+  const int card_h = 110;
+  const int gap_x = 14;
+  const int gap_y = 12;
+  const int origin_x = 32;
   const int origin_y = 74;
 
   for (size_t i = 0; i < KID_COUNT; ++i) {
-    const int col = static_cast<int>(i % 2);
-    const int row = static_cast<int>(i / 2);
+    const int col = static_cast<int>(i % cols);
+    const int row = static_cast<int>(i / cols);
     lv_obj_t *card = lv_btn_create(screen_home_);
     lv_obj_set_size(card, card_w, card_h);
-    lv_obj_set_pos(card, 32 + col * (card_w + gap), origin_y + row * (card_h + gap));
+    lv_obj_set_pos(card, origin_x + col * (card_w + gap_x), origin_y + row * (card_h + gap_y));
     lv_obj_set_style_bg_color(card, c(COL_CARD), 0);
     lv_obj_set_style_bg_color(card, c(0x2F445C), LV_STATE_PRESSED);
     lv_obj_set_style_radius(card, 14, 0);
@@ -176,11 +180,11 @@ void AppUi::buildHome() {
     lv_obj_set_style_border_width(card, 0, 0);
     lv_obj_add_event_cb(card, onKidCard, LV_EVENT_CLICKED, reinterpret_cast<void *>(i));
 
-    lv_obj_t *name = make_label(card, KIDS[i].name, &lv_font_montserrat_28, COL_TEXT);
-    lv_obj_align(name, LV_ALIGN_TOP_MID, 0, 22);
+    lv_obj_t *name = make_label(card, KIDS[i].name, &lv_font_montserrat_24, COL_TEXT);
+    lv_obj_align(name, LV_ALIGN_TOP_MID, 0, 18);
 
     home_remain_labels_[i] = make_label(card, "", &lv_font_montserrat_14, COL_MUTED);
-    lv_obj_align(home_remain_labels_[i], LV_ALIGN_BOTTOM_MID, 0, -18);
+    lv_obj_align(home_remain_labels_[i], LV_ALIGN_BOTTOM_MID, 0, -14);
   }
 
   leftover_btn_ = lv_btn_create(screen_home_);
@@ -322,21 +326,27 @@ void AppUi::buildDoerPicker() {
   doer_prompt_ = make_label(screen_doer_, "Who did this job?", &lv_font_montserrat_24, COL_TEXT);
   lv_obj_align(doer_prompt_, LV_ALIGN_TOP_MID, 0, 40);
 
-  const int btn_w = 340;
-  const int btn_h = 110;
+  // 3-across so five names fit with room for Cancel
+  const int cols = 3;
+  const int btn_w = 230;
+  const int btn_h = 96;
+  const int gap_x = 16;
+  const int gap_y = 14;
+  const int origin_x = 47;
+  const int origin_y = 100;
   for (size_t i = 0; i < KID_COUNT; ++i) {
-    const int col = static_cast<int>(i % 2);
-    const int row = static_cast<int>(i / 2);
+    const int col = static_cast<int>(i % cols);
+    const int row = static_cast<int>(i / cols);
     lv_obj_t *btn = lv_btn_create(screen_doer_);
     doer_btns_[i] = btn;
     lv_obj_set_size(btn, btn_w, btn_h);
-    lv_obj_set_pos(btn, 50 + col * (btn_w + 20), 110 + row * (btn_h + 20));
+    lv_obj_set_pos(btn, origin_x + col * (btn_w + gap_x), origin_y + row * (btn_h + gap_y));
     lv_obj_set_style_bg_color(btn, c(COL_CARD), 0);
     lv_obj_set_style_bg_color(btn, c(0x2F445C), LV_STATE_PRESSED);
     lv_obj_set_style_radius(btn, 14, 0);
     lv_obj_set_style_shadow_width(btn, 0, 0);
     lv_obj_add_event_cb(btn, onDoerChosen, LV_EVENT_CLICKED, reinterpret_cast<void *>(i));
-    lv_obj_t *n = make_label(btn, KIDS[i].name, &lv_font_montserrat_28, COL_TEXT);
+    lv_obj_t *n = make_label(btn, KIDS[i].name, &lv_font_montserrat_24, COL_TEXT);
     lv_obj_center(n);
   }
 
@@ -424,7 +434,7 @@ void AppUi::rebuildJobList() {
 
     lv_obj_t *row = lv_obj_create(job_list_);
     job_rows_[j] = row;
-    // Taller rows so Jax can spot the picture next to each job / expectation
+    // Taller rows so Jax can spot the line icon next to each job / expectation
     lv_obj_set_size(row, 760, 64);
     lv_obj_set_style_bg_color(row, c(COL_CARD), 0);
     lv_obj_set_style_radius(row, 10, 0);

@@ -1,13 +1,13 @@
 # Kids Jobs Sign-off (ESP32-S3)
 
-Firmware for the **Waveshare ESP32-S3-Touch-LCD-7** (800×480). Four kids — **Xavier, Presley, Jax, Banx** — each have Expectations and Jobs screens. After **7:40am**, a shared **Jobs left to do** screen lets anyone finish leftovers, pick who did it (rewards tally), and only unlocks internet for kids whose **own** list is fully clear.
+Firmware for the **Waveshare ESP32-S3-Touch-LCD-7** (800×480). Five kids — **Xavier, Presley, Jax, Banx, Hazel** — each have Expectations and Jobs screens. After **7:40am**, a shared **Jobs left to do** screen lets anyone finish leftovers, pick who did it (rewards tally), and only unlocks internet for kids whose **own** list is fully clear.
 
 ## Screens
 
 | Screen | Purpose |
 |--------|---------|
 | **Photo / idle** | Always-on family photo + **Let's Go** (or tap anywhere). Returns here after **3 min** idle |
-| **Home** | Four kid cards + **Jobs left to do** (locked until 7:40am) |
+| **Home** | Five kid cards + **Jobs left to do** (locked until 7:40am) |
 | **Expectations** | That kid’s daily expectations + Done |
 | **Jobs** | That kid’s paid jobs + Done |
 
@@ -96,7 +96,7 @@ On boot the panel prints `[boot] reset reason: ...` (e.g. `PANIC`, `interrupt wa
 | `kids/config/state` | JSON | retained — kids, jobs, who has each job, “needed for internet” flags (read by the web app) |
 | `kids/config/set` | JSON | from the web app — `{"jobs":{"feed_cat":{"kids":["jax"],"required":true}}}` (partial updates OK) |
 
-Slugs: `xavier`, `presley`, `jax`, `banx`.
+Slugs: `xavier`, `presley`, `jax`, `banx`, `hazel`.
 
 **Admin commands:** `kids/{slug}/cmd/reset`, `kids/cmd/reset_all`, `kids/cmd/reset_rewards` (any non-empty payload, don’t retain). The panel clears any retained message on these topics when it connects.
 
@@ -159,4 +159,4 @@ See `examples/homeassistant-mqtt.yaml` for more.
 
 Edit lists / `required_for_internet` in `include/config.h`.
 
-Each expectation and paid job shows a **picture icon** on the panel (and matching emoji in the web app) so kids who can’t read yet — like Jax — can still tell them apart. To redraw icons after editing the art: `python3 tools/gen_job_icons.py`.
+Each expectation and paid job shows a **line (outline) icon** on the panel (and matching emoji in the web app) so kids who can’t read yet — like Jax — can still tell them apart. To redraw icons after editing the art: `python3 tools/gen_job_icons.py`.

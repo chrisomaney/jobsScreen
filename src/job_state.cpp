@@ -100,6 +100,28 @@ void JobState::loadConfig() {
     return;
   }
   applyJobsObject(doc["jobs"].as<JsonObjectConst>(), g_mask, g_required);
+
+  // Kids added in firmware after the panel last saved (e.g. Hazel) are missing
+  // from the JSON. Give them the compile-time default assignments once.
+  bool added = false;
+  for (size_t k = 0; k < KID_COUNT; ++k) {
+    if (saved.indexOf(KIDS[k].slug) >= 0) {
+      continue;
+    }
+    for (size_t j = 0; j < JOB_COUNT; ++j) {
+      if (JOBS[j].kids & (1u << k)) {
+        const uint8_t next = static_cast<uint8_t>(g_mask[j] | (1u << k));
+        if (next != g_mask[j]) {
+          g_mask[j] = next;
+          added = true;
+        }
+      }
+    }
+  }
+  if (added) {
+    Serial.println("[jobs] added newly configured kids to saved assignments");
+    persistConfig();
+  }
 }
 
 void JobState::persistConfig() {

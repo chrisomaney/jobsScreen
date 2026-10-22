@@ -9,7 +9,7 @@
 #define LV_COLOR_16_SWAP 0
 
 // LVGL heap lives in PSRAM (8 MB on this board). The old 64 KB internal pool
-// ran out when the "Jobs left to do" list was full (4 kids x 18 rows).
+// ran out when the "Jobs left to do" list was full (5 kids x 18 rows).
 #define LV_MEM_CUSTOM 1
 #define LV_MEM_CUSTOM_INCLUDE "lv_mem_psram.h"
 #define LV_MEM_CUSTOM_ALLOC lv_psram_alloc

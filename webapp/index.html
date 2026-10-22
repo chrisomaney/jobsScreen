@@ -32,6 +32,8 @@
     --k1: #C2457A; --k1-soft: #F7E1EA;
     --k2: #C98512; --k2-soft: #F7ECD7;
     --k3: #2F8A55; --k3-soft: #DDF0E3;
+    --k4: #7C5CF0; --k4-soft: #E8E1FA;
+    --kid-n: 5;
     --radius: 14px;
     --radius-sm: 10px;
     --shadow: 0 1px 2px rgba(38,36,31,.06), 0 6px 20px rgba(38,36,31,.06);
@@ -52,6 +54,7 @@
       --k1: #E98BB2; --k1-soft: #45273A;
       --k2: #E8B25A; --k2-soft: #423320;
       --k3: #6CC793; --k3-soft: #1F3D2C;
+      --k4: #A78BFA; --k4-soft: #2E2748;
       --shadow: 0 1px 2px rgba(0,0,0,.3), 0 6px 20px rgba(0,0,0,.25);
       --tog-ink: #16191F;
       color-scheme: dark;
@@ -115,8 +118,8 @@
   .warn { font-size: var(--text-sm); color: var(--danger); background: var(--danger-soft); padding: 10px 12px; border-radius: var(--radius-sm); margin: 0 0 12px; }
   .hidden { display: none !important; }
 
-  /* Kid strip */
-  .kids { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 14px 0 6px; }
+  /* Kid strip — column count follows --kid-n from JS */
+  .kids { display: grid; grid-template-columns: repeat(var(--kid-n), 1fr); gap: 8px; margin: 14px 0 6px; }
   .kid {
     padding: 10px 10px 9px; border-radius: var(--radius-sm); background: var(--surface);
     border: 1px solid var(--line); border-top: 4px solid var(--kc); min-width: 0;
@@ -131,7 +134,7 @@
   /* Matrix */
   section.group { margin-top: 18px; }
   .ghead {
-    display: grid; grid-template-columns: 1fr repeat(4, 52px); align-items: end; gap: 4px;
+    display: grid; grid-template-columns: 1fr repeat(var(--kid-n), minmax(40px, 52px)); align-items: end; gap: 4px;
     padding: 0 10px 6px; position: sticky; top: 0; z-index: 2; background: var(--bg);
     padding-top: 8px;
   }
@@ -140,7 +143,7 @@
   .colh { text-align: center; font-size: var(--text-xs); font-weight: 800; color: var(--kc); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .list { border-radius: var(--radius); overflow: hidden; }
   .job {
-    display: grid; grid-template-columns: 1fr repeat(4, 52px); align-items: center; gap: 4px;
+    display: grid; grid-template-columns: 1fr repeat(var(--kid-n), minmax(40px, 52px)); align-items: center; gap: 4px;
     padding: 10px; background: var(--surface); border-bottom: 1px solid var(--line);
     border-left: 4px solid var(--gc);
   }
@@ -208,7 +211,7 @@
     .pills { flex-direction: column; align-items: flex-end; }
     .req .long { display: none; }
     .req .short { display: inline; }
-    .ghead, .job { grid-template-columns: 1fr repeat(4, 44px); gap: 2px; }
+    .ghead, .job { grid-template-columns: 1fr repeat(var(--kid-n), minmax(36px, 44px)); gap: 2px; }
     .tog { width: 40px; height: 40px; }
     .kids { gap: 6px; }
     .kid { padding: 8px 7px; }
@@ -426,10 +429,12 @@
   }
 
   // ---------- render ----------
-  function kidVars(i) { return `--kc: var(--k${i % 4}); --kcs: var(--k${i % 4}-soft);`; }
+  function kidVars(i) { return `--kc: var(--k${i % 5}); --kcs: var(--k${i % 5}-soft);`; }
+  function setKidCount(n) { document.documentElement.style.setProperty('--kid-n', String(Math.max(1, n))); }
 
   function renderKids() {
     if (!base) { $('kids').innerHTML = ''; return; }
+    setKidCount(base.kids.length);
     $('kids').innerHTML = base.kids.map((k, i) => {
       const count = base.jobs.filter((j) => draft[j.id]?.kids.has(k.slug)).length;
       const p = progress[k.slug];
@@ -445,6 +450,7 @@
 
   function renderGroups() {
     if (!base) return;
+    setKidCount(base.kids.length);
     const changed = new Set(changedIds());
     const groups = [
       { cat: 'expectation', title: 'Expectations', color: 'var(--expect)' },
@@ -538,7 +544,7 @@
   }
 
   // ---------- demo mode (no broker) ----------
-  const DEMO_KIDS = [['xavier', 'Xavier'], ['presley', 'Presley'], ['jax', 'Jax'], ['banx', 'Banx']];
+  const DEMO_KIDS = [['xavier', 'Xavier'], ['presley', 'Presley'], ['jax', 'Jax'], ['banx', 'Banx'], ['hazel', 'Hazel']];
   const DEMO_JOBS = [
     ['make_bed', 'make bed', 'expectation'], ['tidy_floor', 'tidy floor', 'expectation'],
     ['washing_in_baskets', 'washing in baskets', 'expectation'], ['towels_on_hooks', 'towels on hooks', 'expectation'],
@@ -561,6 +567,7 @@
     progress = {
       xavier: { pct: 72, internet: false }, presley: { pct: 100, internet: true },
       jax: { pct: 39, internet: false }, banx: { pct: 11, internet: false },
+      hazel: { pct: 55, internet: false },
     };
     $('connectCard').classList.add('hidden'); $('app').classList.remove('hidden');
     setConn('ok', 'Demo mode'); setPanel(true);
