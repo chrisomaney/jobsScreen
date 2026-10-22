@@ -4,5 +4,6 @@
 .vscode/launch.json
 .vscode/ipch
 include/secrets.h
+rewards-panel/include/secrets.h
 *.pyc
 .DS_Store

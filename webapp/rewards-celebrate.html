@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rewards Celebrate</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@800&family=Nunito:wght@700;800&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
+<style>
+  :root { --bg:#0B1F2A; --ink:#F7F4EF; --gold:#F4B942; --mint:#2DD4A8; --coral:#FF6B4A; }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg); color: var(--ink);
+    font-family: 'Nunito', system-ui, sans-serif;
+    display: grid; place-items: center; overflow: hidden;
+  }
+  #idle, #splash { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 40px; }
+  #splash { display: none; }
+  #splash.show { display: grid; animation: pop .45s cubic-bezier(.2,1.4,.4,1); }
+  h1 { font-family: 'Syne', sans-serif; font-size: clamp(4rem, 14vw, 9rem); margin: 0; letter-spacing: -.03em; }
+  .kid { font-size: clamp(2rem, 6vw, 3.5rem); font-weight: 800; margin: 12px 0; }
+  .sub { font-size: clamp(1.2rem, 3.5vw, 2rem); opacity: .9; max-width: 18ch; }
+  .wait { color: #8FA6B5; font-size: 1.25rem; }
+  .gear { position: fixed; top: 12px; right: 12px; opacity: .35; }
+  .gear input { width: 220px; padding: 8px; border-radius: 8px; border: 0; margin-left: 6px; }
+  @keyframes pop { from { transform: scale(.7); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+  body.winner { background: var(--mint); color: #0B1F2A; }
+  body.bonus { background: var(--coral); color: #0B1F2A; }
+</style>
+</head>
+<body>
+  <div class="gear">
+    <input id="broker" placeholder="ws://homeassistant.local:1884">
+    <input id="user" placeholder="user" style="width:90px">
+    <input id="pass" type="password" placeholder="pass" style="width:90px">
+  </div>
+  <div id="idle"><p class="wait">Waiting for a WINNER or BONUS…</p></div>
+  <div id="splash">
+    <div>
+      <h1 id="title">WINNER!</h1>
+      <div class="kid" id="kid"></div>
+      <div class="sub" id="sub"></div>
+    </div>
+  </div>
+<script>
+const NAMES = {xavier:'Xavier',presley:'Presley',jax:'Jax',banx:'Banx',hazel:'Hazel'};
+let hideTimer = null;
+let client = null;
+
+function show(msg) {
+  document.body.className = msg.type === 'bonus' ? 'bonus' : 'winner';
+  document.getElementById('idle').style.display = 'none';
+  const splash = document.getElementById('splash');
+  splash.classList.add('show');
+  document.getElementById('title').textContent = msg.title || (msg.type === 'bonus' ? 'BONUS!' : 'WINNER!');
+  document.getElementById('kid').textContent = NAMES[msg.kid] || msg.kid || '';
+  document.getElementById('sub').textContent = msg.subtitle || msg.prize_name || '';
+  clearTimeout(hideTimer);
+  hideTimer = setTimeout(() => {
+    splash.classList.remove('show');
+    document.getElementById('idle').style.display = 'grid';
+    document.body.className = '';
+  }, 8000);
+}
+
+function connect() {
+  const url = document.getElementById('broker').value.trim() || `ws://${location.hostname||'homeassistant.local'}:1884`;
+  const username = document.getElementById('user').value;
+  const password = document.getElementById('pass').value;
+  localStorage.setItem('rewardsCelebrate', JSON.stringify({ url, username, password }));
+  if (client) try { client.end(true); } catch (_) {}
+  client = mqtt.connect(url, { username, password, reconnectPeriod: 3000 });
+  client.on('connect', () => client.subscribe('kids/rewards/celebrate'));
+  client.on('message', (topic, buf) => {
+    if (topic !== 'kids/rewards/celebrate') return;
+    try { show(JSON.parse(buf.toString())); } catch (_) {}
+  });
+}
+
+(function init() {
+  const host = location.hostname || 'homeassistant.local';
+  document.getElementById('broker').value = `ws://${host}:1884`;
+  try {
+    const s = JSON.parse(localStorage.getItem('rewardsCelebrate') || 'null');
+    if (s) {
+      document.getElementById('broker').value = s.url || document.getElementById('broker').value;
+      document.getElementById('user').value = s.username || '';
+      document.getElementById('pass').value = s.password || '';
+    }
+  } catch (_) {}
+  ['broker','user','pass'].forEach(id => document.getElementById(id).addEventListener('change', connect));
+  connect();
+})();
+</script>
+</body>
+</html>

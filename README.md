@@ -2,6 +2,8 @@
 
 Firmware for the **Waveshare ESP32-S3-Touch-LCD-7** (800×480). Five kids — **Xavier, Presley, Jax, Banx, Hazel** — each have Expectations and Jobs screens. After **7:40am**, a shared **Jobs left to do** screen lets anyone finish leftovers, pick who did it (rewards tally), and only unlocks internet for kids whose **own** list is fully clear.
 
+**Second panel:** [rewards-panel/](rewards-panel/) — prize ads, WINNER splash, phone admin + Android TV celebrate page (shares MQTT reward tallies).
+
 ## Screens
 
 | Screen | Purpose |
