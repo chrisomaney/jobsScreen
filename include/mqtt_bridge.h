@@ -13,6 +13,7 @@ public:
   void publishRewardTally(size_t kid);
   void publishRewardEvent(size_t doer, size_t owner, size_t job);
   void publishAll();
+  void publishConfig();
   bool connected() { return client_.connected(); }
   void handleMessage(char *topic, byte *payload, unsigned int length);
 

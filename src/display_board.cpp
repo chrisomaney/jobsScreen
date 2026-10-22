@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <esp_display_panel.hpp>
+#include <esp_heap_caps.h>
 
 using namespace esp_panel::board;
 using namespace esp_panel::drivers;
@@ -13,10 +14,7 @@ lv_disp_draw_buf_t draw_buf;
 lv_disp_drv_t disp_drv;
 lv_indev_drv_t indev_drv;
 lv_color_t *buf1 = nullptr;
-lv_color_t *buf2 = nullptr;
-
-// Simple mutex via portMUX for LVGL from Arduino loop only — single-threaded draw.
-portMUX_TYPE lvgl_mux = portMUX_INITIALIZER_UNLOCKED;
+int g_backlight_state = -1;  // -1 unknown, 0 off, 1 on
 
 void lvgl_flush_cb(lv_disp_drv_t *drv, const lv_area_t *area, lv_color_t *color_p) {
   auto *lcd = static_cast<LCD *>(drv->user_data);
@@ -24,14 +22,16 @@ void lvgl_flush_cb(lv_disp_drv_t *drv, const lv_area_t *area, lv_color_t *color_
   const int y = area->y1;
   const int w = area->x2 - area->x1 + 1;
   const int h = area->y2 - area->y1 + 1;
-  lcd->drawBitmap(x, y, x + w, y + h, reinterpret_cast<const uint8_t *>(color_p));
+  // ESP32_Display_Panel 1.x: drawBitmap(x_start, y_start, WIDTH, HEIGHT, data).
+  // (Passing x+w / y+h here made every strip below the top of the screen fail
+  // the bounds check or read past the end of the LVGL buffer.)
+  lcd->drawBitmap(x, y, w, h, reinterpret_cast<const uint8_t *>(color_p));
   lv_disp_flush_ready(drv);
 }
 
 void lvgl_touch_cb(lv_indev_drv_t *drv, lv_indev_data_t *data) {
   auto *touch = static_cast<Touch *>(drv->user_data);
   TouchPoint point{};
-  // readPoints(points, max_points, timeout_ms) — returns number of points
   const int count = touch->readPoints(&point, 1, 0);
   if (count > 0) {
     data->state = LV_INDEV_STATE_PRESSED;
@@ -48,21 +48,17 @@ bool display_board_init() {
   Serial.println("[display] init Waveshare ESP32-S3-Touch-LCD-7");
 
   g_board = new Board();
-  g_board->init();
-  // Full refresh draw avoids tearing on RGB panels when using LVGL partial buffers
-  g_board->getLCD()->configFrameBufferNumber(2);
+  if (!g_board->init()) {
+    Serial.println("[display] board init failed");
+    return false;
+  }
+  // Note: keep the default single RGB frame buffer. With partial LVGL buffers,
+  // a second frame buffer only wastes ~770 KB of PSRAM (and with esp_lcd's
+  // copy mode can draw into the buffer that is not being scanned out).
   if (!g_board->begin()) {
     Serial.println("[display] board begin failed");
     return false;
   }
-  Serial.println("[display] board began");
-
-  if (g_board->getBacklight()) {
-    g_board->getBacklight()->on();
-    // Start dim — UI will raise brightness after "Lets Go"
-    g_board->getBacklight()->setBrightness(8);
-  }
-  Serial.println("[display] backlight on (dim)");
 
   LCD *lcd = g_board->getLCD();
   Touch *touch = g_board->getTouch();
@@ -71,25 +67,25 @@ bool display_board_init() {
     return false;
   }
 
-  lv_init();
-  Serial.println("[display] lvgl init");
+  display_board_set_backlight(100);
 
+  lv_init();
+
+  // One partial draw buffer is enough: the RGB flush is a synchronous memcpy
+  // into the panel frame buffer, so a second buffer gives no overlap.
+  // Prefer internal RAM (fast), fall back to PSRAM; Wi-Fi needs internal RAM too,
+  // so keep this modest (800 x 40 x 2 B = 64 KB).
   const size_t buf_pixels = LCD_H_RES * 40;
-  buf1 = static_cast<lv_color_t *>(heap_caps_malloc(buf_pixels * sizeof(lv_color_t), MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL));
-  buf2 = static_cast<lv_color_t *>(heap_caps_malloc(buf_pixels * sizeof(lv_color_t), MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL));
+  const size_t buf_bytes = buf_pixels * sizeof(lv_color_t);
+  buf1 = static_cast<lv_color_t *>(heap_caps_malloc(buf_bytes, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
   if (!buf1) {
-    buf1 = static_cast<lv_color_t *>(heap_caps_malloc(buf_pixels * sizeof(lv_color_t), MALLOC_CAP_SPIRAM));
-  }
-  if (!buf2) {
-    buf2 = static_cast<lv_color_t *>(heap_caps_malloc(buf_pixels * sizeof(lv_color_t), MALLOC_CAP_SPIRAM));
+    buf1 = static_cast<lv_color_t *>(heap_caps_malloc(buf_bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
   }
   if (!buf1) {
     Serial.println("[display] LVGL buffer alloc failed");
     return false;
   }
-  Serial.printf("[display] lvgl buffers ok (buf2=%s)\n", buf2 ? "yes" : "single");
-
-  lv_disp_draw_buf_init(&draw_buf, buf1, buf2, buf_pixels);
+  lv_disp_draw_buf_init(&draw_buf, buf1, nullptr, buf_pixels);
 
   lv_disp_drv_init(&disp_drv);
   disp_drv.hor_res = LCD_H_RES;
@@ -109,39 +105,32 @@ bool display_board_init() {
     Serial.println("[display] warning: no touch controller");
   }
 
-  Serial.println("[display] ready 800x480");
+  Serial.printf("[display] ready 800x480 (free internal %u, psram %u)\n",
+                static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
+                static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)));
   return true;
 }
 
-void display_board_lvgl_lock() {
-  portENTER_CRITICAL(&lvgl_mux);
-}
-
-void display_board_lvgl_unlock() {
-  portEXIT_CRITICAL(&lvgl_mux);
-}
-
 void display_board_loop() {
-  display_board_lvgl_lock();
   lv_timer_handler();
-  display_board_lvgl_unlock();
 }
 
 void display_board_set_backlight(uint8_t percent) {
   if (!g_board || !g_board->getBacklight()) {
     return;
   }
-  if (percent > 100) {
-    percent = 100;
+  const int want = percent > 0 ? 1 : 0;
+  if (want == g_backlight_state) {
+    return;  // avoid an I2C expander write on every screen change
   }
-  g_board->getBacklight()->setBrightness(percent);
-  g_board->getBacklight()->on();
+  if (want) {
+    g_board->getBacklight()->on();
+  } else {
+    g_board->getBacklight()->off();
+  }
+  g_backlight_state = want;
 }
 
-bool display_board_touch_pressed() {
-  if (!g_board || !g_board->getTouch()) {
-    return false;
-  }
-  TouchPoint point{};
-  return g_board->getTouch()->readPoints(&point, 1, 0) > 0;
+uint32_t display_board_inactive_ms() {
+  return lv_disp_get_inactive_time(nullptr);
 }

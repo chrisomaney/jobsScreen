@@ -1,10 +1,12 @@
 #include "ui.h"
 
 #include <WiFi.h>
+#include <string.h>
 
 #include "clock_util.h"
 #include "display_board.h"
 #include "idle_photo.h"
+#include "job_icons.h"
 
 AppUi *AppUi::self_ = nullptr;
 
@@ -20,10 +22,10 @@ lv_obj_t *make_label(lv_obj_t *parent, const char *text, const lv_font_t *font, 
   return lbl;
 }
 
-size_t countJobsInCategory(JobCategory cat) {
+size_t countJobsInCategory(size_t kid, JobCategory cat) {
   size_t n = 0;
   for (size_t j = 0; j < JOB_COUNT; ++j) {
-    if (JOBS[j].category == cat) {
+    if (JobState::jobCategory(j) == cat && JobState::isAssigned(kid, j)) {
       ++n;
     }
   }
@@ -33,7 +35,7 @@ size_t countJobsInCategory(JobCategory cat) {
 size_t countDoneInCategory(const JobState *state, size_t kid, JobCategory cat) {
   size_t n = 0;
   for (size_t j = 0; j < JOB_COUNT; ++j) {
-    if (JOBS[j].category == cat && state->isDone(kid, j)) {
+    if (JobState::jobCategory(j) == cat && state->isDone(kid, j)) {
       ++n;
     }
   }
@@ -58,7 +60,7 @@ void AppUi::begin(JobState *state, MqttBridge *mqtt) {
   state_ = state;
   mqtt_ = mqtt;
   seen_revision_ = state_->revision();
-  last_activity_ms_ = millis();
+  seen_config_revision_ = state_->configRevision();
   buildIdle();
   buildHome();
   buildKidScaffold();
@@ -67,8 +69,20 @@ void AppUi::begin(JobState *state, MqttBridge *mqtt) {
   showIdle();
 }
 
-void AppUi::noteActivity() {
-  last_activity_ms_ = millis();
+bool AppUi::debounce(uint32_t *last_ms) {
+  const uint32_t now = millis();
+  if (*last_ms != 0 && now - *last_ms < DONE_DEBOUNCE_MS) {
+    return false;
+  }
+  *last_ms = now;
+  return true;
+}
+
+void AppUi::publishKid(size_t kid) {
+  for (size_t j = 0; j < JOB_COUNT; ++j) {
+    mqtt_->publishJob(kid, j);
+  }
+  mqtt_->publishKidSummary(kid);
 }
 
 bool AppUi::isActiveSession() const {
@@ -76,11 +90,8 @@ bool AppUi::isActiveSession() const {
 }
 
 void AppUi::applyBacklightForScreen() {
-  if (screen_kind_ == ScreenKind::Idle) {
-    display_board_set_backlight(BACKLIGHT_IDLE_PERCENT);
-  } else {
-    display_board_set_backlight(BACKLIGHT_ACTIVE_PERCENT);
-  }
+  // On/off only on this board (see config.h)
+  display_board_set_backlight((screen_kind_ == ScreenKind::Idle && IDLE_PHOTO_BRIGHTNESS_PCT == 0) ? 0 : 100);
 }
 
 void AppUi::styleTab(lv_obj_t *btn, bool active, uint32_t accent) {
@@ -94,6 +105,9 @@ void AppUi::buildIdle() {
   lv_obj_set_style_bg_color(screen_idle_, c(0x1B2430), 0);
   lv_obj_set_style_bg_opa(screen_idle_, LV_OPA_COVER, 0);
   lv_obj_clear_flag(screen_idle_, LV_OBJ_FLAG_SCROLLABLE);
+  // Tapping anywhere on the photo also wakes the panel
+  lv_obj_add_flag(screen_idle_, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_event_cb(screen_idle_, onLetsGo, LV_EVENT_CLICKED, nullptr);
 
   if (idle_photo_begin(&idle_img_dsc_)) {
     idle_img_ = lv_img_create(screen_idle_);
@@ -125,7 +139,7 @@ void AppUi::buildIdle() {
   lv_obj_set_style_shadow_width(go, 0, 0);
   lv_obj_set_style_border_width(go, 0, 0);
   lv_obj_add_event_cb(go, onLetsGo, LV_EVENT_CLICKED, nullptr);
-  lv_obj_t *go_lbl = make_label(go, "Lets Go", &lv_font_montserrat_28, 0x1A2332);
+  lv_obj_t *go_lbl = make_label(go, "Let's Go", &lv_font_montserrat_28, 0x1A2332);
   lv_obj_center(go_lbl);
 }
 
@@ -135,26 +149,30 @@ void AppUi::buildHome() {
   lv_obj_set_style_bg_opa(screen_home_, LV_OPA_COVER, 0);
   lv_obj_clear_flag(screen_home_, LV_OBJ_FLAG_SCROLLABLE);
 
-  make_label(screen_home_, "Jobs Sign-off", &lv_font_montserrat_28, COL_TEXT);
-  lv_obj_align(lv_obj_get_child(screen_home_, 0), LV_ALIGN_TOP_MID, 0, 8);
+  lv_obj_t *home_title = make_label(screen_home_, "Jobs Sign-off", &lv_font_montserrat_28, COL_TEXT);
+  lv_obj_align(home_title, LV_ALIGN_TOP_MID, 0, 8);
 
-  status_label_ = make_label(screen_home_, "Connecting…", &lv_font_montserrat_14, COL_MUTED);
+  status_label_ = make_label(screen_home_, "Connecting...", &lv_font_montserrat_14, COL_MUTED);
   lv_obj_align(status_label_, LV_ALIGN_TOP_LEFT, 16, 46);
 
   clock_label_ = make_label(screen_home_, "", &lv_font_montserrat_14, COL_MUTED);
   lv_obj_align(clock_label_, LV_ALIGN_TOP_RIGHT, -16, 46);
 
-  const int card_w = 360;
-  const int card_h = 130;
-  const int gap = 16;
+  // 3-across grid so five kids fit above the leftover bar on 800×480
+  const int cols = 3;
+  const int card_w = 236;
+  const int card_h = 110;
+  const int gap_x = 14;
+  const int gap_y = 12;
+  const int origin_x = 32;
   const int origin_y = 74;
 
   for (size_t i = 0; i < KID_COUNT; ++i) {
-    const int col = static_cast<int>(i % 2);
-    const int row = static_cast<int>(i / 2);
+    const int col = static_cast<int>(i % cols);
+    const int row = static_cast<int>(i / cols);
     lv_obj_t *card = lv_btn_create(screen_home_);
     lv_obj_set_size(card, card_w, card_h);
-    lv_obj_set_pos(card, 32 + col * (card_w + gap), origin_y + row * (card_h + gap));
+    lv_obj_set_pos(card, origin_x + col * (card_w + gap_x), origin_y + row * (card_h + gap_y));
     lv_obj_set_style_bg_color(card, c(COL_CARD), 0);
     lv_obj_set_style_bg_color(card, c(0x2F445C), LV_STATE_PRESSED);
     lv_obj_set_style_radius(card, 14, 0);
@@ -162,11 +180,11 @@ void AppUi::buildHome() {
     lv_obj_set_style_border_width(card, 0, 0);
     lv_obj_add_event_cb(card, onKidCard, LV_EVENT_CLICKED, reinterpret_cast<void *>(i));
 
-    lv_obj_t *name = make_label(card, KIDS[i].name, &lv_font_montserrat_28, COL_TEXT);
-    lv_obj_align(name, LV_ALIGN_TOP_MID, 0, 22);
+    lv_obj_t *name = make_label(card, KIDS[i].name, &lv_font_montserrat_24, COL_TEXT);
+    lv_obj_align(name, LV_ALIGN_TOP_MID, 0, 18);
 
     home_remain_labels_[i] = make_label(card, "", &lv_font_montserrat_14, COL_MUTED);
-    lv_obj_align(home_remain_labels_[i], LV_ALIGN_BOTTOM_MID, 0, -18);
+    lv_obj_align(home_remain_labels_[i], LV_ALIGN_BOTTOM_MID, 0, -14);
   }
 
   leftover_btn_ = lv_btn_create(screen_home_);
@@ -211,8 +229,8 @@ void AppUi::buildKidScaffold() {
   lv_obj_set_style_bg_color(reset, c(0x7F1D1D), 0);
   lv_obj_set_style_radius(reset, 10, 0);
   lv_obj_set_style_shadow_width(reset, 0, 0);
-  lv_obj_add_event_cb(reset, onResetKid, LV_EVENT_CLICKED, nullptr);
-  lv_obj_t *reset_lbl = make_label(reset, "Reset day", &lv_font_montserrat_14, COL_TEXT);
+  lv_obj_add_event_cb(reset, onResetKid, LV_EVENT_LONG_PRESSED, nullptr);
+  lv_obj_t *reset_lbl = make_label(reset, "Hold: reset", &lv_font_montserrat_14, COL_TEXT);
   lv_obj_center(reset_lbl);
 
   internet_badge_ = lv_obj_create(screen_kid_);
@@ -222,8 +240,8 @@ void AppUi::buildKidScaffold() {
   lv_obj_set_style_border_width(internet_badge_, 0, 0);
   lv_obj_set_style_bg_color(internet_badge_, c(COL_BTN), 0);
   lv_obj_clear_flag(internet_badge_, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_t *badge_lbl = make_label(internet_badge_, "Internet OFF", &lv_font_montserrat_14, COL_TEXT);
-  lv_obj_center(badge_lbl);
+  badge_label_ = make_label(internet_badge_, "Internet OFF", &lv_font_montserrat_14, COL_TEXT);
+  lv_obj_center(badge_label_);
 
   tab_expect_ = lv_btn_create(screen_kid_);
   lv_obj_set_size(tab_expect_, 240, 42);
@@ -282,8 +300,8 @@ void AppUi::buildNotDoneScaffold() {
   lv_obj_t *back_lbl = make_label(back, "< Home", &lv_font_montserrat_14, COL_TEXT);
   lv_obj_center(back_lbl);
 
-  make_label(screen_not_done_, "Jobs left to do", &lv_font_montserrat_24, COL_TEXT);
-  lv_obj_align(lv_obj_get_child(screen_not_done_, 1), LV_ALIGN_TOP_MID, 0, 12);
+  lv_obj_t *nd_title = make_label(screen_not_done_, "Jobs left to do", &lv_font_montserrat_24, COL_TEXT);
+  lv_obj_align(nd_title, LV_ALIGN_TOP_MID, 0, 12);
 
   not_done_summary_ = make_label(screen_not_done_, "", &lv_font_montserrat_14, COL_MUTED);
   lv_obj_align(not_done_summary_, LV_ALIGN_TOP_MID, 0, 46);
@@ -308,20 +326,27 @@ void AppUi::buildDoerPicker() {
   doer_prompt_ = make_label(screen_doer_, "Who did this job?", &lv_font_montserrat_24, COL_TEXT);
   lv_obj_align(doer_prompt_, LV_ALIGN_TOP_MID, 0, 40);
 
-  const int btn_w = 340;
-  const int btn_h = 110;
+  // 3-across so five names fit with room for Cancel
+  const int cols = 3;
+  const int btn_w = 230;
+  const int btn_h = 96;
+  const int gap_x = 16;
+  const int gap_y = 14;
+  const int origin_x = 47;
+  const int origin_y = 100;
   for (size_t i = 0; i < KID_COUNT; ++i) {
-    const int col = static_cast<int>(i % 2);
-    const int row = static_cast<int>(i / 2);
+    const int col = static_cast<int>(i % cols);
+    const int row = static_cast<int>(i / cols);
     lv_obj_t *btn = lv_btn_create(screen_doer_);
+    doer_btns_[i] = btn;
     lv_obj_set_size(btn, btn_w, btn_h);
-    lv_obj_set_pos(btn, 50 + col * (btn_w + 20), 110 + row * (btn_h + 20));
+    lv_obj_set_pos(btn, origin_x + col * (btn_w + gap_x), origin_y + row * (btn_h + gap_y));
     lv_obj_set_style_bg_color(btn, c(COL_CARD), 0);
     lv_obj_set_style_bg_color(btn, c(0x2F445C), LV_STATE_PRESSED);
     lv_obj_set_style_radius(btn, 14, 0);
     lv_obj_set_style_shadow_width(btn, 0, 0);
     lv_obj_add_event_cb(btn, onDoerChosen, LV_EVENT_CLICKED, reinterpret_cast<void *>(i));
-    lv_obj_t *n = make_label(btn, KIDS[i].name, &lv_font_montserrat_28, COL_TEXT);
+    lv_obj_t *n = make_label(btn, KIDS[i].name, &lv_font_montserrat_24, COL_TEXT);
     lv_obj_center(n);
   }
 
@@ -346,7 +371,7 @@ void AppUi::updateLeftoverHomeButton() {
     lv_obj_clear_state(leftover_btn_, LV_STATE_DISABLED);
     lv_obj_add_flag(leftover_btn_, LV_OBJ_FLAG_CLICKABLE);
     lv_label_set_text(leftover_title_, "Jobs left to do");
-    lv_label_set_text(leftover_hint_, "anyone can help — then tap who did it (rewards)");
+    lv_label_set_text(leftover_hint_, "anyone can help - then tap who did it (rewards)");
   } else {
     lv_obj_set_style_bg_color(leftover_btn_, c(0x3F3F46), 0);
     lv_obj_add_state(leftover_btn_, LV_STATE_DISABLED);
@@ -355,7 +380,7 @@ void AppUi::updateLeftoverHomeButton() {
     const int mins = clock_minutes_until_leftover_open();
     char buf[64];
     if (!clock_is_synced()) {
-      snprintf(buf, sizeof(buf), "opens at %02d:%02d — waiting for clock sync", LEFTOVER_OPENS_HOUR,
+      snprintf(buf, sizeof(buf), "opens at %02d:%02d - waiting for clock sync", LEFTOVER_OPENS_HOUR,
                LEFTOVER_OPENS_MINUTE);
     } else if (mins > 0) {
       snprintf(buf, sizeof(buf), "locked until %02d:%02d (%d min)", LEFTOVER_OPENS_HOUR,
@@ -372,13 +397,18 @@ void AppUi::updateHomeRemainders() {
     if (!home_remain_labels_[i]) {
       continue;
     }
-    const size_t left = JOB_COUNT - state_->doneCount(i);
+    const size_t left = state_->remainingCount(i);
+    const bool ready = state_->internetReady(i);
     char buf[64];
     if (left == 0) {
-      snprintf(buf, sizeof(buf), "all done — internet on");
+      snprintf(buf, sizeof(buf), "all done - internet on  " LV_SYMBOL_BULLET "  rewards %lu",
+               static_cast<unsigned long>(state_->rewardTally(i)));
+      lv_obj_set_style_text_color(home_remain_labels_[i], c(COL_DONE), 0);
+    } else if (ready) {
+      snprintf(buf, sizeof(buf), "internet on  " LV_SYMBOL_BULLET "  %u optional left", static_cast<unsigned>(left));
       lv_obj_set_style_text_color(home_remain_labels_[i], c(COL_DONE), 0);
     } else {
-      snprintf(buf, sizeof(buf), "%u left  •  rewards %lu", static_cast<unsigned>(left),
+      snprintf(buf, sizeof(buf), "%u left  " LV_SYMBOL_BULLET "  rewards %lu", static_cast<unsigned>(left),
                static_cast<unsigned long>(state_->rewardTally(i)));
       lv_obj_set_style_text_color(home_remain_labels_[i], c(COL_MUTED), 0);
     }
@@ -398,30 +428,34 @@ void AppUi::rebuildJobList() {
   const uint32_t accent = (active_page_ == KidPage::Expectations) ? COL_EXPECT : COL_PAID;
 
   for (size_t j = 0; j < JOB_COUNT; ++j) {
-    if (JOBS[j].category != cat) {
+    if (JobState::jobCategory(j) != cat || !JobState::isAssigned(active_kid_, j)) {
       continue;
     }
 
     lv_obj_t *row = lv_obj_create(job_list_);
     job_rows_[j] = row;
-    lv_obj_set_size(row, 760, 56);
+    // Taller rows so Jax can spot the line icon next to each job / expectation
+    lv_obj_set_size(row, 760, 64);
     lv_obj_set_style_bg_color(row, c(COL_CARD), 0);
     lv_obj_set_style_radius(row, 10, 0);
     lv_obj_set_style_border_side(row, LV_BORDER_SIDE_LEFT, 0);
     lv_obj_set_style_border_width(row, 4, 0);
     lv_obj_set_style_border_color(row, c(accent), 0);
-    lv_obj_set_style_pad_left(row, 14, 0);
+    lv_obj_set_style_pad_left(row, 10, 0);
     lv_obj_set_style_pad_right(row, 8, 0);
     lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
 
-    lv_obj_t *name = make_label(row, JOBS[j].label, &lv_font_montserrat_18, COL_TEXT);
-    lv_obj_align(name, LV_ALIGN_LEFT_MID, 0, JOBS[j].detail[0] ? -9 : 0);
+    lv_obj_t *icon = job_icon_create(row, JobState::jobId(j));
+    lv_obj_align(icon, LV_ALIGN_LEFT_MID, 0, 0);
 
-    if (JOBS[j].detail[0]) {
-      lv_obj_t *det = make_label(row, JOBS[j].detail, &lv_font_montserrat_14, COL_MUTED);
+    lv_obj_t *name = make_label(row, JobState::jobLabel(j), &lv_font_montserrat_18, COL_TEXT);
+    lv_obj_align(name, LV_ALIGN_LEFT_MID, 56, JobState::jobDetail(j)[0] ? -9 : 0);
+
+    if (JobState::jobDetail(j)[0]) {
+      lv_obj_t *det = make_label(row, JobState::jobDetail(j), &lv_font_montserrat_14, COL_MUTED);
       lv_label_set_long_mode(det, LV_LABEL_LONG_DOT);
-      lv_obj_set_width(det, 520);
-      lv_obj_align(det, LV_ALIGN_LEFT_MID, 0, 12);
+      lv_obj_set_width(det, 470);
+      lv_obj_align(det, LV_ALIGN_LEFT_MID, 56, 12);
     }
 
     lv_obj_t *btn = lv_btn_create(row);
@@ -430,7 +464,10 @@ void AppUi::rebuildJobList() {
     lv_obj_align(btn, LV_ALIGN_RIGHT_MID, 0, 0);
     lv_obj_set_style_radius(btn, 10, 0);
     lv_obj_set_style_shadow_width(btn, 0, 0);
-    lv_obj_add_event_cb(btn, onDone, LV_EVENT_CLICKED, reinterpret_cast<void *>(j));
+    // Tap = mark done. Hold = undo (so a stray tap can't switch internet off).
+    // SHORT_CLICKED is not sent after a long press, so the two never clash.
+    lv_obj_add_event_cb(btn, onDone, LV_EVENT_SHORT_CLICKED, reinterpret_cast<void *>(j));
+    lv_obj_add_event_cb(btn, onUndo, LV_EVENT_LONG_PRESSED, reinterpret_cast<void *>(j));
     lv_obj_t *bl = make_label(btn, "Done", &lv_font_montserrat_16, COL_TEXT);
     lv_obj_center(bl);
 
@@ -448,7 +485,7 @@ void AppUi::updateJobRow(size_t job) {
   if (done) {
     lv_obj_set_style_bg_color(btn, c(COL_BTN_ACTIVE), 0);
     if (lbl) {
-      lv_label_set_text(lbl, "Done");
+      lv_label_set_text(lbl, LV_SYMBOL_OK " Done");
     }
     if (job_rows_[job]) {
       lv_obj_set_style_bg_color(job_rows_[job], c(0x1F3A2E), 0);
@@ -473,21 +510,18 @@ void AppUi::updateKidHeader() {
 
   const JobCategory cat = expectations ? JobCategory::Expectation : JobCategory::Paid;
   const size_t cat_done = countDoneInCategory(state_, active_kid_, cat);
-  const size_t cat_total = countJobsInCategory(cat);
+  const size_t cat_total = countJobsInCategory(active_kid_, cat);
   const int pct = cat_total ? static_cast<int>((cat_done * 100) / cat_total) : 0;
   lv_bar_set_value(progress_bar_, pct, LV_ANIM_OFF);
 
   char buf[64];
-  snprintf(buf, sizeof(buf), "%u/%u on this screen", static_cast<unsigned>(cat_done),
+  snprintf(buf, sizeof(buf), "%u/%u done - hold green to undo", static_cast<unsigned>(cat_done),
            static_cast<unsigned>(cat_total));
   lv_label_set_text(progress_label_, buf);
 
   const bool ready = state_->internetReady(active_kid_);
   lv_obj_set_style_bg_color(internet_badge_, c(ready ? COL_DONE : COL_BTN), 0);
-  lv_obj_t *badge_lbl = lv_obj_get_child(internet_badge_, 0);
-  if (badge_lbl) {
-    lv_label_set_text(badge_lbl, ready ? "Internet ON" : "Internet OFF");
-  }
+  lv_label_set_text(badge_label_, ready ? "Internet ON" : "Internet OFF");
 }
 
 void AppUi::rebuildNotDoneList() {
@@ -495,15 +529,15 @@ void AppUi::rebuildNotDoneList() {
 
   size_t total_left = 0;
   for (size_t k = 0; k < KID_COUNT; ++k) {
-    total_left += (JOB_COUNT - state_->doneCount(k));
+    total_left += state_->remainingCount(k);
   }
 
   char summary[80];
   if (total_left == 0) {
-    snprintf(summary, sizeof(summary), "Everyone is clear — internet unlocked for all");
+    snprintf(summary, sizeof(summary), "Everyone is clear - nothing left to do");
   } else {
     snprintf(summary, sizeof(summary),
-             "%u left — tap Done, then who did it (rewards). Unlock = own list clear.",
+             "%u left - tap Done, then who did it (rewards). Unlock = own list clear.",
              static_cast<unsigned>(total_left));
   }
   lv_label_set_text(not_done_summary_, summary);
@@ -515,13 +549,13 @@ void AppUi::rebuildNotDoneList() {
     lv_obj_set_style_radius(ok, 12, 0);
     lv_obj_set_style_border_width(ok, 0, 0);
     lv_obj_clear_flag(ok, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_t *msg = make_label(ok, "Nothing left — nice work", &lv_font_montserrat_18, COL_DONE);
+    lv_obj_t *msg = make_label(ok, "Nothing left - nice work", &lv_font_montserrat_18, COL_DONE);
     lv_obj_center(msg);
     return;
   }
 
   for (size_t k = 0; k < KID_COUNT; ++k) {
-    const size_t left = JOB_COUNT - state_->doneCount(k);
+    const size_t left = state_->remainingCount(k);
     if (left == 0) {
       continue;
     }
@@ -534,31 +568,34 @@ void AppUi::rebuildNotDoneList() {
     lv_obj_clear_flag(hdr, LV_OBJ_FLAG_SCROLLABLE);
 
     char hdr_txt[64];
-    snprintf(hdr_txt, sizeof(hdr_txt), "%s's list — %u left (internet locked)", KIDS[k].name,
-             static_cast<unsigned>(left));
+    snprintf(hdr_txt, sizeof(hdr_txt), "%s's list - %u left (%s)", KIDS[k].name,
+             static_cast<unsigned>(left), state_->internetReady(k) ? "internet on" : "internet locked");
     lv_obj_t *hl = make_label(hdr, hdr_txt, &lv_font_montserrat_16, COL_TEXT);
     lv_obj_align(hl, LV_ALIGN_LEFT_MID, 12, 0);
 
     auto add_open = [&](JobCategory cat, uint32_t accent, const char *tag) {
       for (size_t j = 0; j < JOB_COUNT; ++j) {
-        if (JOBS[j].category != cat || state_->isDone(k, j)) {
+        if (JobState::jobCategory(j) != cat || !JobState::isAssigned(k, j) || state_->isDone(k, j)) {
           continue;
         }
         lv_obj_t *row = lv_obj_create(not_done_list_);
-        lv_obj_set_size(row, 760, 52);
+        lv_obj_set_size(row, 760, 60);
         lv_obj_set_style_bg_color(row, c(COL_CARD), 0);
         lv_obj_set_style_radius(row, 8, 0);
         lv_obj_set_style_border_side(row, LV_BORDER_SIDE_LEFT, 0);
         lv_obj_set_style_border_width(row, 4, 0);
         lv_obj_set_style_border_color(row, c(accent), 0);
-        lv_obj_set_style_pad_left(row, 12, 0);
+        lv_obj_set_style_pad_left(row, 10, 0);
         lv_obj_set_style_pad_right(row, 8, 0);
         lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
 
+        lv_obj_t *icon = job_icon_create(row, JobState::jobId(j));
+        lv_obj_align(icon, LV_ALIGN_LEFT_MID, 0, 0);
+
         char line[96];
-        snprintf(line, sizeof(line), "[%s]  %s", tag, JOBS[j].label);
+        snprintf(line, sizeof(line), "[%s]  %s", tag, JobState::jobLabel(j));
         lv_obj_t *lbl = make_label(row, line, &lv_font_montserrat_16, COL_TEXT);
-        lv_obj_align(lbl, LV_ALIGN_LEFT_MID, 0, 0);
+        lv_obj_align(lbl, LV_ALIGN_LEFT_MID, 56, 0);
 
         lv_obj_t *btn = lv_btn_create(row);
         lv_obj_set_size(btn, 120, 40);
@@ -566,7 +603,7 @@ void AppUi::rebuildNotDoneList() {
         lv_obj_set_style_bg_color(btn, c(COL_BTN), 0);
         lv_obj_set_style_radius(btn, 10, 0);
         lv_obj_set_style_shadow_width(btn, 0, 0);
-        lv_obj_add_event_cb(btn, onLeftoverDone, LV_EVENT_CLICKED, packOwnerJob(k, j));
+        lv_obj_add_event_cb(btn, onLeftoverDone, LV_EVENT_SHORT_CLICKED, packOwnerJob(k, j));
         lv_obj_t *bl = make_label(btn, "Done", &lv_font_montserrat_16, COL_TEXT);
         lv_obj_center(bl);
       }
@@ -579,11 +616,18 @@ void AppUi::rebuildNotDoneList() {
 
 void AppUi::showDoerPicker(size_t owner, size_t job) {
   awaiting_doer_ = true;
-  noteActivity();
   pending_owner_ = owner;
   pending_job_ = job;
+  // The owner can't claim a helper reward for their own job
+  for (size_t i = 0; i < KID_COUNT; ++i) {
+    if (i == owner) {
+      lv_obj_add_flag(doer_btns_[i], LV_OBJ_FLAG_HIDDEN);
+    } else {
+      lv_obj_clear_flag(doer_btns_[i], LV_OBJ_FLAG_HIDDEN);
+    }
+  }
   char buf[96];
-  snprintf(buf, sizeof(buf), "Who did %s's \"%s\"?", KIDS[owner].name, JOBS[job].label);
+  snprintf(buf, sizeof(buf), "Who helped with %s's \"%s\"?", KIDS[owner].name, JobState::jobLabel(job));
   lv_label_set_text(doer_prompt_, buf);
   applyBacklightForScreen();
   lv_scr_load(screen_doer_);
@@ -593,18 +637,18 @@ void AppUi::completeLeftover(size_t doer) {
   const size_t owner = pending_owner_;
   const size_t job = pending_job_;
   awaiting_doer_ = false;
+  if (doer == owner || doer >= KID_COUNT || !JobState::isAssigned(owner, job) ||
+      state_->isDone(owner, job)) {
+    showNotDone();  // owner can't self-credit; job may have been done meanwhile
+    return;
+  }
 
-  const bool was_ready = state_->internetReady(owner);
   state_->setDone(owner, job, true);
   state_->addReward(doer);
 
   mqtt_->publishJob(owner, job);
-  mqtt_->publishRewardEvent(doer, owner, job);
-  mqtt_->publishKidSummary(owner);
-  if (!was_ready && state_->internetReady(owner)) {
-    // Edge: owner just unlocked — HA listens to kids/{owner}/internet = on
-    mqtt_->publishKidSummary(owner);
-  }
+  mqtt_->publishRewardEvent(doer, owner, job);  // also publishes doer's tally
+  mqtt_->publishKidSummary(owner);              // owner's internet on/off + progress
 
   showNotDone();
 }
@@ -618,7 +662,6 @@ void AppUi::showIdle() {
 
 void AppUi::showHome() {
   awaiting_doer_ = false;
-  noteActivity();
   screen_kind_ = ScreenKind::Home;
   applyBacklightForScreen();
   updateHomeRemainders();
@@ -631,7 +674,6 @@ void AppUi::showKidPage(size_t kid, KidPage page) {
     return;
   }
   awaiting_doer_ = false;
-  noteActivity();
   active_kid_ = kid;
   active_page_ = page;
   screen_kind_ = ScreenKind::Kid;
@@ -647,7 +689,6 @@ void AppUi::showNotDone() {
     return;
   }
   awaiting_doer_ = false;
-  noteActivity();
   screen_kind_ = ScreenKind::NotDone;
   applyBacklightForScreen();
   rebuildNotDoneList();
@@ -675,21 +716,21 @@ void AppUi::refreshActiveScreen() {
 }
 
 void AppUi::tick() {
-  // Any touch while in an active session keeps the panel awake
-  const bool down = display_board_touch_pressed();
-  if (down && !touch_was_down_ && isActiveSession()) {
-    noteActivity();
-  }
-  touch_was_down_ = down;
-
-  if (isActiveSession() && (millis() - last_activity_ms_ >= IDLE_TIMEOUT_MS)) {
+  // LVGL tracks time since the last touch, so no extra GT911 reads needed
+  if (isActiveSession() && display_board_inactive_ms() >= IDLE_TIMEOUT_MS) {
     showIdle();
   }
 
   const uint32_t rev = state_->revision();
-  if (rev != seen_revision_) {
+  const uint32_t cfg_rev = state_->configRevision();
+  if (rev != seen_revision_ || cfg_rev != seen_config_revision_) {
+    const bool cfg_changed = cfg_rev != seen_config_revision_;
     seen_revision_ = rev;
+    seen_config_revision_ = cfg_rev;
     if (!awaiting_doer_ && screen_kind_ != ScreenKind::Idle) {
+      if (cfg_changed && screen_kind_ == ScreenKind::Kid) {
+        rebuildJobList();  // job list for this kid changed (web app)
+      }
       refreshActiveScreen();
     }
   }
@@ -711,11 +752,13 @@ void AppUi::tick() {
   }
 
   if (status_label_ && screen_kind_ == ScreenKind::Home) {
-    const char *msg = mqtt_->connected() ? "MQTT online" : "MQTT connecting…";
+    const char *msg = mqtt_->connected() ? "MQTT online" : "MQTT connecting...";
     if (WiFi.status() != WL_CONNECTED) {
-      msg = "Wi-Fi connecting…";
+      msg = "Wi-Fi connecting...";
     }
-    lv_label_set_text(status_label_, msg);
+    if (strcmp(lv_label_get_text(status_label_), msg) != 0) {
+      lv_label_set_text(status_label_, msg);
+    }
   }
 }
 
@@ -725,14 +768,12 @@ void AppUi::onLetsGo(lv_event_t *e) {
 }
 
 void AppUi::onKidCard(lv_event_t *e) {
-  self_->noteActivity();
   const size_t kid = reinterpret_cast<size_t>(lv_event_get_user_data(e));
   self_->showKidPage(kid, KidPage::Expectations);
 }
 
 void AppUi::onNotDoneCard(lv_event_t *e) {
   (void)e;
-  self_->noteActivity();
   if (!clock_leftover_screen_open()) {
     return;
   }
@@ -741,35 +782,40 @@ void AppUi::onNotDoneCard(lv_event_t *e) {
 
 void AppUi::onBackHome(lv_event_t *e) {
   (void)e;
-  self_->noteActivity();
   self_->showHome();
 }
 
 void AppUi::onTabExpect(lv_event_t *e) {
   (void)e;
-  self_->noteActivity();
   self_->showKidPage(self_->active_kid_, KidPage::Expectations);
 }
 
 void AppUi::onTabJobs(lv_event_t *e) {
   (void)e;
-  self_->noteActivity();
   self_->showKidPage(self_->active_kid_, KidPage::Jobs);
 }
 
 void AppUi::onDone(lv_event_t *e) {
-  static uint32_t last_ms = 0;
-  const uint32_t now = millis();
-  if (now - last_ms < DONE_DEBOUNCE_MS) {
-    return;
-  }
-  last_ms = now;
-  self_->noteActivity();
-
   const size_t job = reinterpret_cast<size_t>(lv_event_get_user_data(e));
   const size_t kid = self_->active_kid_;
-  const bool now_done = !self_->state_->isDone(kid, job);
-  self_->state_->setDone(kid, job, now_done);
+  if (job >= JOB_COUNT || self_->state_->isDone(kid, job) || !self_->debounce(&self_->last_done_ms_[job])) {
+    return;  // already done: tapping again does nothing (hold to undo)
+  }
+  self_->state_->setDone(kid, job, true);
+  self_->mqtt_->publishJob(kid, job);
+  self_->mqtt_->publishKidSummary(kid);
+  self_->updateJobRow(job);
+  self_->updateKidHeader();
+}
+
+void AppUi::onUndo(lv_event_t *e) {
+  const size_t job = reinterpret_cast<size_t>(lv_event_get_user_data(e));
+  const size_t kid = self_->active_kid_;
+  if (job >= JOB_COUNT || !self_->state_->isDone(kid, job)) {
+    return;
+  }
+  self_->state_->setDone(kid, job, false);
+  self_->last_done_ms_[job] = millis();
   self_->mqtt_->publishJob(kid, job);
   self_->mqtt_->publishKidSummary(kid);
   self_->updateJobRow(job);
@@ -778,25 +824,17 @@ void AppUi::onDone(lv_event_t *e) {
 
 void AppUi::onResetKid(lv_event_t *e) {
   (void)e;
-  self_->noteActivity();
   const size_t kid = self_->active_kid_;
   self_->state_->resetKid(kid);
-  for (size_t j = 0; j < JOB_COUNT; ++j) {
-    self_->mqtt_->publishJob(kid, j);
-  }
-  self_->mqtt_->publishKidSummary(kid);
+  self_->publishKid(kid);
   self_->rebuildJobList();
   self_->updateKidHeader();
 }
 
 void AppUi::onLeftoverDone(lv_event_t *e) {
-  static uint32_t last_ms = 0;
-  const uint32_t now = millis();
-  if (now - last_ms < DONE_DEBOUNCE_MS) {
+  if (!self_->debounce(&self_->last_leftover_ms_)) {
     return;
   }
-  last_ms = now;
-  self_->noteActivity();
 
   size_t owner = 0;
   size_t job = 0;
@@ -805,7 +843,6 @@ void AppUi::onLeftoverDone(lv_event_t *e) {
 }
 
 void AppUi::onDoerChosen(lv_event_t *e) {
-  self_->noteActivity();
   const size_t doer = reinterpret_cast<size_t>(lv_event_get_user_data(e));
   if (!self_->awaiting_doer_) {
     return;
@@ -815,7 +852,6 @@ void AppUi::onDoerChosen(lv_event_t *e) {
 
 void AppUi::onDoerCancel(lv_event_t *e) {
   (void)e;
-  self_->noteActivity();
   self_->awaiting_doer_ = false;
   self_->showNotDone();
 }

@@ -16,11 +16,25 @@ static const KidProfile KIDS[] = {
   {"Presley", "presley"},
   {"Jax",     "jax"},
   {"Banx",    "banx"},
+  {"Hazel",   "hazel"},
 };
 static const size_t KID_COUNT = sizeof(KIDS) / sizeof(KIDS[0]);
+static_assert(KID_COUNT <= 8, "kid masks are 8-bit");
+
+// Bit masks for assigning jobs to kids (bit index = position in KIDS[]).
+// Combine with |, e.g. KID_XAVIER | KID_JAX.
+static const uint8_t KID_XAVIER  = 1u << 0;
+static const uint8_t KID_PRESLEY = 1u << 1;
+static const uint8_t KID_JAX     = 1u << 2;
+static const uint8_t KID_BANX    = 1u << 3;
+static const uint8_t KID_HAZEL   = 1u << 4;
+static const uint8_t ALL_KIDS    = 0xFF;
 
 // ---------------------------------------------------------------------------
 // Jobs from your spreadsheet
+// Last column = which kids have the job. Every job is currently on every
+// kid's list (ALL_KIDS). To give a job to particular kids only, e.g.:
+//   {"bins_out", ..., JobCategory::Paid, true, KID_XAVIER | KID_PRESLEY},
 // ---------------------------------------------------------------------------
 enum class JobCategory : uint8_t {
   Expectation = 0,
@@ -33,32 +47,39 @@ struct JobDef {
   const char *detail;      // optional longer hint (may be empty)
   JobCategory category;
   bool required_for_internet;  // must be done to unlock MikroTik profile
+  uint8_t kids;                // who has this job on their list (ALL_KIDS or KID_* mask)
 };
 
 static const JobDef JOBS[] = {
   // Expectations
-  {"make_bed",           "make bed",            "", JobCategory::Expectation, true},
-  {"tidy_floor",         "tidy floor",          "", JobCategory::Expectation, true},
-  {"washing_in_baskets", "washing in baskets",  "", JobCategory::Expectation, true},
-  {"towels_on_hooks",    "towels on hooks",     "", JobCategory::Expectation, true},
-  {"brush_teeth",        "brush teeth",         "", JobCategory::Expectation, true},
-  {"get_dressed",        "get dressed",         "", JobCategory::Expectation, true},
-  {"socks_on",           "socks on",            "", JobCategory::Expectation, true},
-  {"medication",         "medication",          "", JobCategory::Expectation, true},
-  {"loungeroom_tidy",    "loungeroom tidy",     "", JobCategory::Expectation, true},
-  {"table_cleared",      "table cleared",       "", JobCategory::Expectation, true},
-  {"lights_fans_off",    "lights and fans off", "", JobCategory::Expectation, true},
+  {"make_bed",           "make bed",            "", JobCategory::Expectation, true, ALL_KIDS},
+  {"tidy_floor",         "tidy floor",          "", JobCategory::Expectation, true, ALL_KIDS},
+  {"washing_in_baskets", "washing in baskets",  "", JobCategory::Expectation, true, ALL_KIDS},
+  {"towels_on_hooks",    "towels on hooks",     "", JobCategory::Expectation, true, ALL_KIDS},
+  {"brush_teeth",        "brush teeth",         "", JobCategory::Expectation, true, ALL_KIDS},
+  {"get_dressed",        "get dressed",         "", JobCategory::Expectation, true, ALL_KIDS},
+  {"socks_on",           "socks on",            "", JobCategory::Expectation, true, ALL_KIDS},
+  {"medication",         "medication",          "", JobCategory::Expectation, true, ALL_KIDS},
+  {"loungeroom_tidy",    "loungeroom tidy",     "", JobCategory::Expectation, true, ALL_KIDS},
+  {"table_cleared",      "table cleared",       "", JobCategory::Expectation, true, ALL_KIDS},
+  {"lights_fans_off",    "lights and fans off", "", JobCategory::Expectation, true, ALL_KIDS},
 
   // Paid jobs
-  {"feed_cat",     "feed cat",     "morning and night, check water every time", JobCategory::Paid, true},
-  {"feed_dog",     "feed dog",     "morning and night, check water every time", JobCategory::Paid, true},
-  {"dishes_away",  "dishes away",  "put all dishes away", JobCategory::Paid, true},
-  {"dishes_wash",  "dishes wash",  "wash all dishes", JobCategory::Paid, true},
-  {"water_plants", "water plants", "water all 4 plants upstairs", JobCategory::Paid, true},
-  {"bins_out",     "bins out",     "recycling + kitchen bin to street bin (every 2nd day / Sun night put bins out)", JobCategory::Paid, true},
-  {"bathroom",     "bathroom",     "wipe vanity, bath edges, mirror — put everything away", JobCategory::Paid, true},
+  {"feed_cat",     "feed cat",     "morning and night, check water every time", JobCategory::Paid, true, ALL_KIDS},
+  {"feed_dog",     "feed dog",     "morning and night, check water every time", JobCategory::Paid, true, ALL_KIDS},
+  {"dishes_away",  "dishes away",  "put all dishes away", JobCategory::Paid, true, ALL_KIDS},
+  {"dishes_wash",  "dishes wash",  "wash all dishes", JobCategory::Paid, true, ALL_KIDS},
+  {"water_plants", "water plants", "water all 4 plants upstairs", JobCategory::Paid, true, ALL_KIDS},
+  {"bins_out",     "bins out",     "recycling + kitchen bin to street bin (every 2nd day / Sun night put bins out)", JobCategory::Paid, true, ALL_KIDS},
+  {"bathroom",     "bathroom",     "wipe vanity, bath edges, mirror - put everything away", JobCategory::Paid, true, ALL_KIDS},
 };
-static const size_t JOB_COUNT = sizeof(JOBS) / sizeof(JOBS[0]);
+// Built-in jobs from the list above. Extra slots (custom_0 …) can be filled from the
+// Jobs Chooser web app without reflashing — see MAX_CUSTOM_JOBS.
+static const size_t BUILTIN_JOB_COUNT = sizeof(JOBS) / sizeof(JOBS[0]);
+static const size_t MAX_CUSTOM_JOBS = 8;
+static const size_t JOB_COUNT = BUILTIN_JOB_COUNT + MAX_CUSTOM_JOBS;
+static const size_t JOB_LABEL_MAX = 40;
+static const size_t JOB_DETAIL_MAX = 80;
 
 // ---------------------------------------------------------------------------
 // Local time — leftover / help screen unlocks at 7:40am
@@ -69,6 +90,11 @@ static const size_t JOB_COUNT = sizeof(JOBS) / sizeof(JOBS[0]);
 static const char *TIMEZONE_POSIX = "AEST-10";
 static const int LEFTOVER_OPENS_HOUR = 7;
 static const int LEFTOVER_OPENS_MINUTE = 40;
+
+// The panel resets everyone's ticks once a day by itself at this local time
+// (rewards tallies are kept). Works even if Home Assistant / MQTT is down.
+static const int DAILY_RESET_HOUR = 3;
+static const int DAILY_RESET_MINUTE = 0;
 
 // ---------------------------------------------------------------------------
 // MQTT topic layout (all retained so iOS admin + HA see last state)
@@ -81,13 +107,24 @@ static const int LEFTOVER_OPENS_MINUTE = 40;
 //   kids/panel/status                  payload: "online" / "offline" (LWT)
 //
 // Admin commands (subscribe):
-//   kids/{slug}/cmd/reset              payload: anything → clear that kid's jobs
-//   kids/cmd/reset_all                 payload: anything → clear everyone
-//   kids/cmd/reset_rewards             payload: anything → zero reward tallies
+//   kids/{slug}/cmd/reset              payload: any non-empty → clear that kid's jobs
+//   kids/cmd/reset_all                 payload: any non-empty → clear everyone
+//   kids/cmd/reset_rewards             payload: any non-empty → zero reward tallies
+// (Retained messages on these topics are cleared on connect so a stray
+//  retained reset can't wipe everything on every reconnect.)
 // ---------------------------------------------------------------------------
 static const char *MQTT_BASE = "kids";
 static const char *MQTT_STATUS_TOPIC = "kids/panel/status";
 static const char *MQTT_REWARDS_EVENT = "kids/rewards/event";
+// Web app job chooser (see webapp/):
+//   kids/config/state  retained JSON — kids, jobs, who has each job, required flags,
+//                      customSlotsFree, and custom:true on Jobs Chooser–created items
+//   kids/config/set    from the web app, any of:
+//     {"jobs":{"feed_cat":{"kids":["jax"],"required":true}}}
+//     {"add":{"label":"pack lunch","cat":"expectation"|"paid","required":true,"kids":[...]}}
+//     {"remove":["custom_0"]}
+static const char *MQTT_CONFIG_STATE = "kids/config/state";
+static const char *MQTT_CONFIG_SET = "kids/config/set";
 
 // UI colours (RGB565-friendly hex for LVGL)
 static const uint32_t COL_BG         = 0x1A2332;
@@ -103,10 +140,13 @@ static const uint32_t COL_BTN_ACTIVE = 0x16A34A;
 // How often to re-publish retained state (ms) — keeps HA fresh after broker restart
 static const uint32_t MQTT_REPUBLISH_MS = 60000;
 
-// Touch debounce for Done buttons (ms)
+// Touch debounce for Done buttons (ms, per button)
 static const uint32_t DONE_DEBOUNCE_MS = 400;
 
-// Photo / idle screen — always on at low backlight; return here after inactivity
+// Photo / idle screen — always on; return here after inactivity
 static const uint32_t IDLE_TIMEOUT_MS = 3UL * 60UL * 1000UL;  // 3 minutes
-static const uint8_t BACKLIGHT_IDLE_PERCENT = 8;               // lowest comfortable
-static const uint8_t BACKLIGHT_ACTIVE_PERCENT = 90;
+
+// The Waveshare 7" backlight is on/off only (CH422G expander, no PWM), so it
+// can't be dimmed in hardware. Instead the idle photo is darkened in software:
+// 100 = original photo, lower = darker. 0 turns the backlight off on idle.
+static const uint8_t IDLE_PHOTO_BRIGHTNESS_PCT = 60;

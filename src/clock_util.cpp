@@ -4,60 +4,65 @@
 
 #include <time.h>
 
-namespace {
-
-bool synced_ = false;
-
-}  // namespace
-
 void clock_begin_ntp() {
-  // POSIX TZ — edit TIMEZONE_POSIX in config.h for your location
-  setenv("TZ", TIMEZONE_POSIX, 1);
-  tzset();
-  configTime(0, 0, "pool.ntp.org", "time.google.com");
+  // configTzTime keeps our POSIX TZ. (configTime(0, 0, ...) overwrites TZ with
+  // "UTC0", which made the 7:40am unlock happen at 5:40pm in Brisbane.)
+  configTzTime(TIMEZONE_POSIX, "pool.ntp.org", "time.google.com");
 }
 
 bool clock_is_synced() {
-  time_t now = time(nullptr);
-  // Before 2024 → not synced yet
-  synced_ = (now > 1700000000);
-  return synced_;
+  // Before Nov 2023 → not synced yet
+  return time(nullptr) > 1700000000;
 }
 
-bool clock_leftover_screen_open() {
+namespace {
+
+bool local_now(struct tm *out) {
   if (!clock_is_synced()) {
     return false;
   }
   time_t now = time(nullptr);
+  localtime_r(&now, out);
+  return true;
+}
+
+int open_minutes() { return LEFTOVER_OPENS_HOUR * 60 + LEFTOVER_OPENS_MINUTE; }
+
+}  // namespace
+
+bool clock_leftover_screen_open() {
   struct tm local {};
-  localtime_r(&now, &local);
-  const int mins = local.tm_hour * 60 + local.tm_min;
-  const int open_mins = LEFTOVER_OPENS_HOUR * 60 + LEFTOVER_OPENS_MINUTE;
-  return mins >= open_mins;
+  if (!local_now(&local)) {
+    return false;
+  }
+  return local.tm_hour * 60 + local.tm_min >= open_minutes();
 }
 
 int clock_minutes_until_leftover_open() {
-  if (!clock_is_synced()) {
+  struct tm local {};
+  if (!local_now(&local)) {
     return -1;
   }
-  if (clock_leftover_screen_open()) {
-    return 0;
-  }
-  time_t now = time(nullptr);
-  struct tm local {};
-  localtime_r(&now, &local);
   const int mins = local.tm_hour * 60 + local.tm_min;
-  const int open_mins = LEFTOVER_OPENS_HOUR * 60 + LEFTOVER_OPENS_MINUTE;
-  return open_mins - mins;
+  return mins >= open_minutes() ? 0 : open_minutes() - mins;
 }
 
 void clock_format_now(char *buf, size_t buflen) {
-  if (!clock_is_synced()) {
-    snprintf(buf, buflen, "time syncing…");
+  struct tm local {};
+  if (!local_now(&local)) {
+    snprintf(buf, buflen, "time syncing...");
     return;
   }
-  time_t now = time(nullptr);
-  struct tm local {};
-  localtime_r(&now, &local);
   strftime(buf, buflen, "%H:%M", &local);
+}
+
+uint32_t clock_job_day() {
+  if (!clock_is_synced()) {
+    return 0;
+  }
+  // Shift back by the reset time so e.g. 02:59 still counts as "yesterday".
+  time_t shifted = time(nullptr) - (DAILY_RESET_HOUR * 3600 + DAILY_RESET_MINUTE * 60);
+  struct tm local {};
+  localtime_r(&shifted, &local);
+  return static_cast<uint32_t>((local.tm_year + 1900) * 10000 + (local.tm_mon + 1) * 100 + local.tm_mday);
 }
