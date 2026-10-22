@@ -3,6 +3,7 @@
 A single HTML file for choosing which kid does which job on the panel. Open it on your phone, tick the boxes and tap **Save to panel**.
 
 - **Who does what:** one tick box per kid for every Expectation and Paid job. A job with nobody ticked is hidden on the panel.
+- **Add expectation or job:** name + type (Expectation / Paid job), optional hint, and whether it's needed for internet. Up to 8 custom items; remove them with **Remove** on the row.
 - **Needed for internet:** switch a job between *needed* (must be done before that kid's internet unlocks) and *optional*.
 - **Live status:** each kid's job count, today's progress and internet on/off.
 - **Panel actions:** clear today's ticks, zero reward tallies.
@@ -13,8 +14,8 @@ It talks to the panel over your MQTT broker. Nothing goes to the cloud except lo
 
 | Topic | Direction | Payload |
 |---|---|---|
-| `kids/config/state` | panel → app (retained) | `{"v":1,"kids":[{"slug","name"}],"jobs":[{"id","label","cat","required","kids":[slugs]}]}` |
-| `kids/config/set` | app → panel | `{"jobs":{"<job id>":{"kids":["xavier","jax"],"required":true}}}` (only changed jobs) |
+| `kids/config/state` | panel → app (retained) | `{"v":1,"customSlotsFree":n,"kids":[{"slug","name"}],"jobs":[{"id","label","cat","required","custom","kids":[slugs]}]}` |
+| `kids/config/set` | app → panel | Assign: `{"jobs":{"<id>":{"kids":["xavier","jax"],"required":true}}}`. Add: `{"add":{"label":"…","cat":"expectation\|paid","required":true,"kids":[…]}}`. Remove custom: `{"remove":["custom_0"]}` |
 | `kids/{slug}/progress` | panel → app | live progress shown on the kid cards |
 | `kids/panel/status` | panel → app | `online` / `offline` |
 

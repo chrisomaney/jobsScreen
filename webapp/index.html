@@ -32,6 +32,8 @@
     --k1: #C2457A; --k1-soft: #F7E1EA;
     --k2: #C98512; --k2-soft: #F7ECD7;
     --k3: #2F8A55; --k3-soft: #DDF0E3;
+    --k4: #7C5CF0; --k4-soft: #E8E1FA;
+    --kid-n: 5;
     --radius: 14px;
     --radius-sm: 10px;
     --shadow: 0 1px 2px rgba(38,36,31,.06), 0 6px 20px rgba(38,36,31,.06);
@@ -52,6 +54,7 @@
       --k1: #E98BB2; --k1-soft: #45273A;
       --k2: #E8B25A; --k2-soft: #423320;
       --k3: #6CC793; --k3-soft: #1F3D2C;
+      --k4: #A78BFA; --k4-soft: #2E2748;
       --shadow: 0 1px 2px rgba(0,0,0,.3), 0 6px 20px rgba(0,0,0,.25);
       --tog-ink: #16191F;
       color-scheme: dark;
@@ -95,12 +98,35 @@
   .connect p { margin: 0 0 14px; color: var(--ink-2); font-size: var(--text-sm); }
   .field { display: grid; gap: 4px; margin-bottom: 10px; }
   .field label { font-size: var(--text-xs); font-weight: 700; color: var(--ink-2); text-transform: uppercase; letter-spacing: .04em; }
-  .field input {
+  .field input, .field select {
     width: 100%; padding: 11px 12px; border-radius: var(--radius-sm);
     border: 1px solid var(--line); background: var(--bg);
   }
   .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .check { display: flex; align-items: center; gap: 8px; font-size: var(--text-sm); color: var(--ink-2); margin: 4px 0 14px; }
+
+  /* Add expectation / job */
+  .addcard { padding: 14px 16px; margin: 14px 0 4px; }
+  .addcard h2 { font-family: var(--font-display); font-weight: 600; font-size: var(--text-lg); margin: 0 0 2px; }
+  .addcard .hint { margin: 0 0 12px; color: var(--ink-2); font-size: var(--text-sm); }
+  .seg {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px;
+    background: var(--bg); border: 1px solid var(--line); border-radius: 12px; margin-bottom: 10px;
+  }
+  .seg button {
+    border: 0; border-radius: 9px; padding: 10px 8px; font-weight: 800; font-size: var(--text-sm);
+    background: transparent; color: var(--ink-2);
+  }
+  .seg button[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: var(--shadow); }
+  .seg button.expect[aria-pressed="true"] { color: var(--expect); }
+  .seg button.paid[aria-pressed="true"] { color: var(--paid); }
+  .addcard .actions { margin-top: 4px; }
+  .addcard .slots { font-size: var(--text-xs); color: var(--ink-3); margin-left: auto; }
+  .job .del {
+    border: 0; background: transparent; color: var(--danger); font-size: 11px; font-weight: 800;
+    padding: 2px 6px; border-radius: 6px; margin-left: 4px;
+  }
+  .job .del:hover { background: var(--danger-soft); }
   .actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
   .btn {
     border: 0; border-radius: 12px; padding: 11px 18px; font-weight: 800;
@@ -115,8 +141,8 @@
   .warn { font-size: var(--text-sm); color: var(--danger); background: var(--danger-soft); padding: 10px 12px; border-radius: var(--radius-sm); margin: 0 0 12px; }
   .hidden { display: none !important; }
 
-  /* Kid strip */
-  .kids { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 14px 0 6px; }
+  /* Kid strip — column count follows --kid-n from JS */
+  .kids { display: grid; grid-template-columns: repeat(var(--kid-n), 1fr); gap: 8px; margin: 14px 0 6px; }
   .kid {
     padding: 10px 10px 9px; border-radius: var(--radius-sm); background: var(--surface);
     border: 1px solid var(--line); border-top: 4px solid var(--kc); min-width: 0;
@@ -131,7 +157,7 @@
   /* Matrix */
   section.group { margin-top: 18px; }
   .ghead {
-    display: grid; grid-template-columns: 1fr repeat(4, 52px); align-items: end; gap: 4px;
+    display: grid; grid-template-columns: 1fr repeat(var(--kid-n), minmax(40px, 52px)); align-items: end; gap: 4px;
     padding: 0 10px 6px; position: sticky; top: 0; z-index: 2; background: var(--bg);
     padding-top: 8px;
   }
@@ -140,7 +166,7 @@
   .colh { text-align: center; font-size: var(--text-xs); font-weight: 800; color: var(--kc); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .list { border-radius: var(--radius); overflow: hidden; }
   .job {
-    display: grid; grid-template-columns: 1fr repeat(4, 52px); align-items: center; gap: 4px;
+    display: grid; grid-template-columns: 1fr repeat(var(--kid-n), minmax(40px, 52px)); align-items: center; gap: 4px;
     padding: 10px; background: var(--surface); border-bottom: 1px solid var(--line);
     border-left: 4px solid var(--gc);
   }
@@ -208,7 +234,7 @@
     .pills { flex-direction: column; align-items: flex-end; }
     .req .long { display: none; }
     .req .short { display: inline; }
-    .ghead, .job { grid-template-columns: 1fr repeat(4, 44px); gap: 2px; }
+    .ghead, .job { grid-template-columns: 1fr repeat(var(--kid-n), minmax(36px, 44px)); gap: 2px; }
     .tog { width: 40px; height: 40px; }
     .kids { gap: 6px; }
     .kid { padding: 8px 7px; }
@@ -256,6 +282,29 @@
 
   <div id="app" class="hidden">
     <div class="kids" id="kids"></div>
+
+    <form class="card addcard" id="addForm">
+      <h2>Add expectation or job</h2>
+      <p class="hint">Creates a new item on the panel. Tick who does it after it appears.</p>
+      <div class="seg" role="group" aria-label="Type">
+        <button type="button" class="expect" id="addCatExpect" aria-pressed="true">Expectation</button>
+        <button type="button" class="paid" id="addCatPaid" aria-pressed="false">Paid job</button>
+      </div>
+      <div class="field">
+        <label for="addLabel">Name</label>
+        <input id="addLabel" name="label" maxlength="40" placeholder="e.g. pack lunch" required autocomplete="off">
+      </div>
+      <div class="field">
+        <label for="addDetail">Hint <span style="font-weight:600;text-transform:none;letter-spacing:0">(optional)</span></label>
+        <input id="addDetail" name="detail" maxlength="80" placeholder="Short tip shown on the panel" autocomplete="off">
+      </div>
+      <label class="check"><input type="checkbox" id="addRequired" checked> Needed for internet unlock</label>
+      <div class="actions">
+        <button class="btn primary" type="submit" id="addBtn">Add to panel</button>
+        <span class="slots" id="addSlots"></span>
+      </div>
+    </form>
+
     <div id="groups"><div class="skeleton" id="waiting">Waiting for the panel to send its job list...</div></div>
 
     <details class="card admin">
@@ -309,6 +358,8 @@
   let draft = {};           // id -> { kids: Set, required: bool }
   let progress = {};        // slug -> progress JSON
   let saving = null;        // { timer }
+  let addCat = 'expectation';
+  let adding = false;
 
   // ---------- connection form ----------
   const saved = (() => { try { return JSON.parse(localStorage.getItem(STORE_KEY) || 'null'); } catch { return null; } })();
@@ -415,6 +466,7 @@
   function onConfig(cfg) {
     if (!cfg || !Array.isArray(cfg.jobs) || !Array.isArray(cfg.kids)) return;
     const dirty = base && changedIds().length > 0;
+    const prevIds = base ? new Set(base.jobs.map((j) => j.id)) : null;
     base = cfg;
     if (!dirty || saving) draft = cloneDraft(cfg);
     else for (const j of cfg.jobs) if (!draft[j.id]) draft[j.id] = { kids: new Set(j.kids), required: !!j.required };
@@ -422,14 +474,73 @@
       clearTimeout(saving.timer); saving = null;
       toast('Saved - the panel is updated');
     }
+    if (adding) {
+      const kind = adding.kind;
+      clearTimeout(adding.timer);
+      adding = null;
+      if (kind === 'remove') {
+        toast('Removed from the panel');
+      } else {
+        const created = prevIds ? cfg.jobs.find((j) => !prevIds.has(j.id)) : null;
+        toast(created ? `Added “${created.label}”` : 'Added on the panel');
+        $('addLabel').value = '';
+        $('addDetail').value = '';
+        $('addRequired').checked = true;
+      }
+    }
     render();
   }
 
+  function setAddCat(cat) {
+    addCat = cat === 'paid' ? 'paid' : 'expectation';
+    $('addCatExpect').setAttribute('aria-pressed', addCat === 'expectation' ? 'true' : 'false');
+    $('addCatPaid').setAttribute('aria-pressed', addCat === 'paid' ? 'true' : 'false');
+  }
+  $('addCatExpect').addEventListener('click', () => setAddCat('expectation'));
+  $('addCatPaid').addEventListener('click', () => setAddCat('paid'));
+
+  function updateAddForm() {
+    const free = typeof base?.customSlotsFree === 'number' ? base.customSlotsFree : null;
+    $('addSlots').textContent = free == null ? '' : free === 0 ? 'No free slots left' : `${free} slot${free === 1 ? '' : 's'} free`;
+    $('addBtn').disabled = !!adding || !base || free === 0;
+    $('addLabel').disabled = !!adding || !base || free === 0;
+    $('addDetail').disabled = !!adding || !base || free === 0;
+  }
+
+  $('addForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    if (!base || adding || saving) return;
+    const label = $('addLabel').value.trim();
+    if (!label) { toast('Enter a name'); return; }
+    if (typeof base.customSlotsFree === 'number' && base.customSlotsFree <= 0) {
+      toast('No free slots — remove a custom item first');
+      return;
+    }
+    const payload = {
+      add: {
+        label,
+        cat: addCat,
+        required: $('addRequired').checked,
+        kids: base.kids.map((k) => k.slug),
+      },
+    };
+    const detail = $('addDetail').value.trim();
+    if (detail) payload.add.detail = detail;
+    if (!publish(TOPIC_SET, JSON.stringify(payload))) return;
+    adding = { kind: 'add', timer: setTimeout(() => {
+      adding = null; updateAddForm();
+      toast("The panel didn't confirm. Is it online?");
+    }, 8000) };
+    updateAddForm();
+  });
+
   // ---------- render ----------
-  function kidVars(i) { return `--kc: var(--k${i % 4}); --kcs: var(--k${i % 4}-soft);`; }
+  function kidVars(i) { return `--kc: var(--k${i % 5}); --kcs: var(--k${i % 5}-soft);`; }
+  function setKidCount(n) { document.documentElement.style.setProperty('--kid-n', String(Math.max(1, n))); }
 
   function renderKids() {
     if (!base) { $('kids').innerHTML = ''; return; }
+    setKidCount(base.kids.length);
     $('kids').innerHTML = base.kids.map((k, i) => {
       const count = base.jobs.filter((j) => draft[j.id]?.kids.has(k.slug)).length;
       const p = progress[k.slug];
@@ -445,6 +556,7 @@
 
   function renderGroups() {
     if (!base) return;
+    setKidCount(base.kids.length);
     const changed = new Set(changedIds());
     const groups = [
       { cat: 'expectation', title: 'Expectations', color: 'var(--expect)' },
@@ -462,15 +574,18 @@
             aria-pressed="${on}" aria-label="${esc(k.name)} does ${esc(j.label)}">${ICON_CHECK}</button>`;
         }).join('');
         const nobody = d.kids.size === 0 ? '<span class="nobody">Nobody - hidden on panel</span>' : '';
+        const del = j.custom
+          ? `<button type="button" class="del" data-del="${esc(j.id)}" title="Remove from panel">Remove</button>`
+          : '';
         return `<div class="job${changed.has(j.id) ? ' changed' : ''}">
           <div class="jl">
-            <div class="jname"><span class="jicon" aria-hidden="true">${JOB_EMOJI[j.id] || '✅'}</span> ${esc(j.label)}</div>
+            <div class="jname"><span class="jicon" aria-hidden="true">${JOB_EMOJI[j.id] || (j.custom ? '📝' : '✅')}</span> ${esc(j.label)}</div>
             <div class="jsub">
               <button type="button" class="req" data-req="${esc(j.id)}" aria-pressed="${d.required}"
                 title="Must be done before internet unlocks">${ICON_WIFI}${d.required
                 ? '<span class="long">Needed for internet</span><span class="short">Needed</span>'
                 : 'Optional'}</button>
-              ${nobody}
+              ${nobody}${del}
             </div>
           </div>${togs}
         </div>`;
@@ -491,10 +606,10 @@
     $('discard').disabled = !!saving;
   }
 
-  function render() { renderKids(); renderGroups(); updateSaveBar(); }
+  function render() { renderKids(); renderGroups(); updateSaveBar(); updateAddForm(); }
 
   $('groups').addEventListener('click', (e) => {
-    if (!base || saving) return;
+    if (!base || saving || adding) return;
     const t = e.target.closest('.tog');
     if (t) {
       const set = draft[t.dataset.job].kids;
@@ -502,7 +617,20 @@
       return render();
     }
     const r = e.target.closest('.req');
-    if (r) { draft[r.dataset.req].required = !draft[r.dataset.req].required; render(); }
+    if (r) { draft[r.dataset.req].required = !draft[r.dataset.req].required; render(); return; }
+    const del = e.target.closest('.del');
+    if (del) {
+      const id = del.dataset.del;
+      const job = base.jobs.find((j) => j.id === id);
+      if (!job?.custom) return;
+      if (!confirm(`Remove “${job.label}” from the panel?`)) return;
+      if (!publish(TOPIC_SET, JSON.stringify({ remove: [id] }))) return;
+      adding = { kind: 'remove', timer: setTimeout(() => {
+        adding = null; updateAddForm();
+        toast("The panel didn't confirm. Is it online?");
+      }, 8000) };
+      updateAddForm();
+    }
   });
 
   $('discard').addEventListener('click', () => { if (base) { draft = cloneDraft(base); render(); } });
@@ -538,7 +666,7 @@
   }
 
   // ---------- demo mode (no broker) ----------
-  const DEMO_KIDS = [['xavier', 'Xavier'], ['presley', 'Presley'], ['jax', 'Jax'], ['banx', 'Banx']];
+  const DEMO_KIDS = [['xavier', 'Xavier'], ['presley', 'Presley'], ['jax', 'Jax'], ['banx', 'Banx'], ['hazel', 'Hazel']];
   const DEMO_JOBS = [
     ['make_bed', 'make bed', 'expectation'], ['tidy_floor', 'tidy floor', 'expectation'],
     ['washing_in_baskets', 'washing in baskets', 'expectation'], ['towels_on_hooks', 'towels on hooks', 'expectation'],
@@ -551,16 +679,24 @@
     ['bins_out', 'bins out', 'paid'], ['bathroom', 'bathroom', 'paid'],
   ];
   let demoCfg = null;
+  function demoSlotsFree() {
+    const used = demoCfg.jobs.filter((j) => j.custom).length;
+    return Math.max(0, 8 - used);
+  }
   function startDemo() {
     demo = true;
     demoCfg = {
       v: 1,
+      customSlotsFree: 8,
       kids: DEMO_KIDS.map(([slug, name]) => ({ slug, name })),
-      jobs: DEMO_JOBS.map(([id, label, cat]) => ({ id, label, cat, required: true, kids: DEMO_KIDS.map((k) => k[0]) })),
+      jobs: DEMO_JOBS.map(([id, label, cat]) => ({
+        id, label, cat, required: true, custom: false, kids: DEMO_KIDS.map((k) => k[0]),
+      })),
     };
     progress = {
       xavier: { pct: 72, internet: false }, presley: { pct: 100, internet: true },
       jax: { pct: 39, internet: false }, banx: { pct: 11, internet: false },
+      hazel: { pct: 55, internet: false },
     };
     $('connectCard').classList.add('hidden'); $('app').classList.remove('hidden');
     setConn('ok', 'Demo mode'); setPanel(true);
@@ -568,8 +704,30 @@
   }
   function demoHandle(topic, payload) {
     if (topic === TOPIC_SET) {
-      const { jobs } = JSON.parse(payload);
-      for (const j of demoCfg.jobs) if (jobs[j.id]) { j.kids = jobs[j.id].kids; j.required = jobs[j.id].required; }
+      const msg = JSON.parse(payload);
+      if (msg.jobs) {
+        for (const j of demoCfg.jobs) {
+          if (msg.jobs[j.id]) { j.kids = msg.jobs[j.id].kids; j.required = msg.jobs[j.id].required; }
+        }
+      }
+      if (msg.add && msg.add.label && demoSlotsFree() > 0) {
+        let n = 0;
+        while (demoCfg.jobs.some((j) => j.id === `custom_${n}`)) n += 1;
+        demoCfg.jobs.push({
+          id: `custom_${n}`,
+          label: String(msg.add.label).trim(),
+          cat: msg.add.cat === 'paid' ? 'paid' : 'expectation',
+          required: msg.add.required !== false,
+          custom: true,
+          detail: msg.add.detail || undefined,
+          kids: Array.isArray(msg.add.kids) ? msg.add.kids : DEMO_KIDS.map((k) => k[0]),
+        });
+      }
+      const remove = Array.isArray(msg.remove) ? msg.remove : (msg.remove ? [msg.remove] : []);
+      if (remove.length) {
+        demoCfg.jobs = demoCfg.jobs.filter((j) => !(j.custom && remove.includes(j.id)));
+      }
+      demoCfg.customSlotsFree = demoSlotsFree();
       setTimeout(() => onConfig(structuredClone(demoCfg)), 500);
     }
     return true;
