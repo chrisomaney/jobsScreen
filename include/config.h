@@ -73,7 +73,13 @@ static const JobDef JOBS[] = {
   {"bins_out",     "bins out",     "recycling + kitchen bin to street bin (every 2nd day / Sun night put bins out)", JobCategory::Paid, true, ALL_KIDS},
   {"bathroom",     "bathroom",     "wipe vanity, bath edges, mirror - put everything away", JobCategory::Paid, true, ALL_KIDS},
 };
-static const size_t JOB_COUNT = sizeof(JOBS) / sizeof(JOBS[0]);
+// Built-in jobs from the list above. Extra slots (custom_0 …) can be filled from the
+// Jobs Chooser web app without reflashing — see MAX_CUSTOM_JOBS.
+static const size_t BUILTIN_JOB_COUNT = sizeof(JOBS) / sizeof(JOBS[0]);
+static const size_t MAX_CUSTOM_JOBS = 8;
+static const size_t JOB_COUNT = BUILTIN_JOB_COUNT + MAX_CUSTOM_JOBS;
+static const size_t JOB_LABEL_MAX = 40;
+static const size_t JOB_DETAIL_MAX = 80;
 
 // ---------------------------------------------------------------------------
 // Local time — leftover / help screen unlocks at 7:40am
@@ -111,8 +117,12 @@ static const char *MQTT_BASE = "kids";
 static const char *MQTT_STATUS_TOPIC = "kids/panel/status";
 static const char *MQTT_REWARDS_EVENT = "kids/rewards/event";
 // Web app job chooser (see webapp/):
-//   kids/config/state  retained JSON — kids, jobs, who has each job, required flags
-//   kids/config/set    JSON from the web app — {"jobs":{"feed_cat":{"kids":["jax"],"required":true}}}
+//   kids/config/state  retained JSON — kids, jobs, who has each job, required flags,
+//                      customSlotsFree, and custom:true on Jobs Chooser–created items
+//   kids/config/set    from the web app, any of:
+//     {"jobs":{"feed_cat":{"kids":["jax"],"required":true}}}
+//     {"add":{"label":"pack lunch","cat":"expectation"|"paid","required":true,"kids":[...]}}
+//     {"remove":["custom_0"]}
 static const char *MQTT_CONFIG_STATE = "kids/config/state";
 static const char *MQTT_CONFIG_SET = "kids/config/set";
 

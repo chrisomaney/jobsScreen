@@ -25,7 +25,7 @@ lv_obj_t *make_label(lv_obj_t *parent, const char *text, const lv_font_t *font, 
 size_t countJobsInCategory(size_t kid, JobCategory cat) {
   size_t n = 0;
   for (size_t j = 0; j < JOB_COUNT; ++j) {
-    if (JOBS[j].category == cat && JobState::isAssigned(kid, j)) {
+    if (JobState::jobCategory(j) == cat && JobState::isAssigned(kid, j)) {
       ++n;
     }
   }
@@ -35,7 +35,7 @@ size_t countJobsInCategory(size_t kid, JobCategory cat) {
 size_t countDoneInCategory(const JobState *state, size_t kid, JobCategory cat) {
   size_t n = 0;
   for (size_t j = 0; j < JOB_COUNT; ++j) {
-    if (JOBS[j].category == cat && state->isDone(kid, j)) {
+    if (JobState::jobCategory(j) == cat && state->isDone(kid, j)) {
       ++n;
     }
   }
@@ -428,7 +428,7 @@ void AppUi::rebuildJobList() {
   const uint32_t accent = (active_page_ == KidPage::Expectations) ? COL_EXPECT : COL_PAID;
 
   for (size_t j = 0; j < JOB_COUNT; ++j) {
-    if (JOBS[j].category != cat || !JobState::isAssigned(active_kid_, j)) {
+    if (JobState::jobCategory(j) != cat || !JobState::isAssigned(active_kid_, j)) {
       continue;
     }
 
@@ -445,14 +445,14 @@ void AppUi::rebuildJobList() {
     lv_obj_set_style_pad_right(row, 8, 0);
     lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
 
-    lv_obj_t *icon = job_icon_create(row, JOBS[j].id);
+    lv_obj_t *icon = job_icon_create(row, JobState::jobId(j));
     lv_obj_align(icon, LV_ALIGN_LEFT_MID, 0, 0);
 
-    lv_obj_t *name = make_label(row, JOBS[j].label, &lv_font_montserrat_18, COL_TEXT);
-    lv_obj_align(name, LV_ALIGN_LEFT_MID, 56, JOBS[j].detail[0] ? -9 : 0);
+    lv_obj_t *name = make_label(row, JobState::jobLabel(j), &lv_font_montserrat_18, COL_TEXT);
+    lv_obj_align(name, LV_ALIGN_LEFT_MID, 56, JobState::jobDetail(j)[0] ? -9 : 0);
 
-    if (JOBS[j].detail[0]) {
-      lv_obj_t *det = make_label(row, JOBS[j].detail, &lv_font_montserrat_14, COL_MUTED);
+    if (JobState::jobDetail(j)[0]) {
+      lv_obj_t *det = make_label(row, JobState::jobDetail(j), &lv_font_montserrat_14, COL_MUTED);
       lv_label_set_long_mode(det, LV_LABEL_LONG_DOT);
       lv_obj_set_width(det, 470);
       lv_obj_align(det, LV_ALIGN_LEFT_MID, 56, 12);
@@ -575,7 +575,7 @@ void AppUi::rebuildNotDoneList() {
 
     auto add_open = [&](JobCategory cat, uint32_t accent, const char *tag) {
       for (size_t j = 0; j < JOB_COUNT; ++j) {
-        if (JOBS[j].category != cat || !JobState::isAssigned(k, j) || state_->isDone(k, j)) {
+        if (JobState::jobCategory(j) != cat || !JobState::isAssigned(k, j) || state_->isDone(k, j)) {
           continue;
         }
         lv_obj_t *row = lv_obj_create(not_done_list_);
@@ -589,11 +589,11 @@ void AppUi::rebuildNotDoneList() {
         lv_obj_set_style_pad_right(row, 8, 0);
         lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
 
-        lv_obj_t *icon = job_icon_create(row, JOBS[j].id);
+        lv_obj_t *icon = job_icon_create(row, JobState::jobId(j));
         lv_obj_align(icon, LV_ALIGN_LEFT_MID, 0, 0);
 
         char line[96];
-        snprintf(line, sizeof(line), "[%s]  %s", tag, JOBS[j].label);
+        snprintf(line, sizeof(line), "[%s]  %s", tag, JobState::jobLabel(j));
         lv_obj_t *lbl = make_label(row, line, &lv_font_montserrat_16, COL_TEXT);
         lv_obj_align(lbl, LV_ALIGN_LEFT_MID, 56, 0);
 
@@ -627,7 +627,7 @@ void AppUi::showDoerPicker(size_t owner, size_t job) {
     }
   }
   char buf[96];
-  snprintf(buf, sizeof(buf), "Who helped with %s's \"%s\"?", KIDS[owner].name, JOBS[job].label);
+  snprintf(buf, sizeof(buf), "Who helped with %s's \"%s\"?", KIDS[owner].name, JobState::jobLabel(job));
   lv_label_set_text(doer_prompt_, buf);
   applyBacklightForScreen();
   lv_scr_load(screen_doer_);

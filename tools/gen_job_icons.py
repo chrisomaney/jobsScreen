@@ -255,6 +255,16 @@ def draw_bathroom() -> Image.Image:
     return img
 
 
+def draw_custom() -> Image.Image:
+    """Generic checklist — used for custom expectations / jobs from the web app."""
+    img, d = blank()
+    d.rounded_rectangle((8, 6, 32, 34), radius=3, outline=255, width=STROKE)
+    d.line((14, 14, 18, 18), fill=255, width=STROKE)
+    d.line((18, 18, 26, 10), fill=255, width=STROKE)
+    d.line((14, 24, 26, 24), fill=255, width=STROKE)
+    return img
+
+
 ICONS = [
     ("make_bed", draw_make_bed),
     ("tidy_floor", draw_tidy_floor),
@@ -274,6 +284,7 @@ ICONS = [
     ("water_plants", draw_plants),
     ("bins_out", draw_bins),
     ("bathroom", draw_bathroom),
+    ("custom", draw_custom),
 ]
 
 BADGE_COLORS = {
@@ -295,6 +306,7 @@ BADGE_COLORS = {
     "water_plants": 0x4ADE80,
     "bins_out": 0x94A3B8,
     "bathroom": 0xC084FC,
+    "custom": 0x94A3B8,
 }
 
 
@@ -316,14 +328,19 @@ def main() -> None:
 
     parts.append("const lv_img_dsc_t *iconForId(const char *id) {")
     for name, _ in ICONS:
+        if name == "custom":
+            continue
         parts.append(f'  if (std::strcmp(id, "{name}") == 0) return &ICON_{name.upper()};')
-    parts.append("  return nullptr;")
+    parts.append("  // custom_N and anything unknown → generic checklist")
+    parts.append("  return &ICON_CUSTOM;")
     parts.append("}")
     parts.append("")
     parts.append("uint32_t badgeColorForId(const char *id) {")
     for name, _ in ICONS:
+        if name == "custom":
+            continue
         parts.append(f'  if (std::strcmp(id, "{name}") == 0) return 0x{BADGE_COLORS[name]:06X}u;')
-    parts.append("  return 0x64748Bu;")
+    parts.append(f"  return 0x{BADGE_COLORS['custom']:06X}u;")
     parts.append("}")
     parts.append("")
     parts.append("}  // namespace")

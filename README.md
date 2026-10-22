@@ -94,7 +94,7 @@ On boot the panel prints `[boot] reset reason: ...` (e.g. `PANIC`, `interrupt wa
 | `kids/rewards/event` | JSON | not retained — `{doer, owner, job, …}` |
 | `kids/panel/status` | `online` / `offline` | LWT |
 | `kids/config/state` | JSON | retained — kids, jobs, who has each job, “needed for internet” flags (read by the web app) |
-| `kids/config/set` | JSON | from the web app — `{"jobs":{"feed_cat":{"kids":["jax"],"required":true}}}` (partial updates OK) |
+| `kids/config/set` | JSON | from the web app — assign `{"jobs":{…}}`, add `{"add":{"label","cat":"expectation\|paid",…}}`, or remove `{"remove":["custom_0"]}` |
 
 Slugs: `xavier`, `presley`, `jax`, `banx`, `hazel`.
 
@@ -160,3 +160,5 @@ See `examples/homeassistant-mqtt.yaml` for more.
 Edit lists / `required_for_internet` in `include/config.h`.
 
 Each expectation and paid job shows a **line (outline) icon** on the panel (and matching emoji in the web app) so kids who can’t read yet — like Jax — can still tell them apart. To redraw icons after editing the art: `python3 tools/gen_job_icons.py`.
+
+The Jobs Chooser can also **add new expectations or paid jobs** (up to 8 custom items) without reflashing; they appear on the panel after **Add to panel**, and custom rows have a **Remove** control.

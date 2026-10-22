@@ -21,12 +21,12 @@ void MqttBridge::begin(JobState *state) {
   g_mqtt = this;
   client_.setClient(wifi_);
   client_.setServer(MQTT_HOST, MQTT_PORT);
-  client_.setBufferSize(4096);  // config JSON is ~2.5 KB
+  client_.setBufferSize(6144);  // config JSON grows with custom jobs
   client_.setCallback(mqttTrampoline);
 }
 
 String MqttBridge::topicJob(size_t kid, size_t job) const {
-  return String(MQTT_BASE) + "/" + KIDS[kid].slug + "/job/" + JOBS[job].id + "/state";
+  return String(MQTT_BASE) + "/" + KIDS[kid].slug + "/job/" + JobState::jobId(job) + "/state";
 }
 
 String MqttBridge::topicInternet(size_t kid) const {
@@ -177,8 +177,8 @@ void MqttBridge::publishRewardEvent(size_t doer, size_t owner, size_t job) {
   doc["doer_name"] = KIDS[doer].name;
   doc["owner"] = KIDS[owner].slug;
   doc["owner_name"] = KIDS[owner].name;
-  doc["job"] = JOBS[job].id;
-  doc["job_label"] = JOBS[job].label;
+  doc["job"] = JobState::jobId(job);
+  doc["job_label"] = JobState::jobLabel(job);
   doc["tally"] = state_->rewardTally(doer);
   String json;
   serializeJson(doc, json);

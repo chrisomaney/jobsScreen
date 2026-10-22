@@ -4,7 +4,9 @@
 #include <Preferences.h>
 
 // Per-kid done flags + reward tallies in RAM + NVS.
-// All counts only consider jobs assigned to that kid (JobDef::kids).
+// All counts only consider jobs assigned to that kid.
+// Built-in jobs come from JOBS[] in config.h; up to MAX_CUSTOM_JOBS extra jobs can
+// be created from the Jobs Chooser (MQTT kids/config/set with an "add" object).
 class JobState {
 public:
   void begin();
@@ -15,7 +17,18 @@ public:
   static bool isRequired(size_t job);
   static uint8_t assignedMask(size_t job);
 
-  // Apply {"jobs":{"<id>":{"kids":["xavier",..],"required":true},..}}.
+  // Catalogue accessors — use these instead of JOBS[j] so custom jobs work.
+  static bool isCustom(size_t job);
+  static bool isDefined(size_t job);  // built-in, or custom with a label
+  static const char *jobId(size_t job);
+  static const char *jobLabel(size_t job);
+  static const char *jobDetail(size_t job);
+  static JobCategory jobCategory(size_t job);
+
+  // Apply config JSON from the web app. Supports:
+  //   {"jobs":{"<id>":{"kids":[...],"required":true,"label":"...","cat":"paid"}}}
+  //   {"add":{"label":"pack lunch","cat":"expectation","required":true,"kids":["jax"]}}
+  //   {"remove":["custom_0"]}
   // Partial updates allowed; unknown ids ignored. Returns true if anything changed.
   bool applyConfigJson(const char *json, size_t len);
   // Full config + kid/job catalogue for the web app (kids/config/state).
@@ -59,4 +72,6 @@ private:
   void persistReward(size_t kid);
   void loadRewards();
   static String key(size_t kid);
+  bool clearCustomJob(size_t job);
+  int allocCustomSlot();
 };
