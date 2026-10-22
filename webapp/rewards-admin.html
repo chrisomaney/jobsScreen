@@ -3,154 +3,145 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Rewards Admin</title>
-<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;800&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+<title>Prize Shop Admin</title>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;700&family=Nunito:wght@700;800&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
 <style>
   :root {
-    --bg: #0B1F2A; --surface: #123447; --ink: #F7F4EF; --muted: #8FA6B5;
-    --gold: #F4B942; --mint: #2DD4A8; --coral: #FF6B4A; --line: #1C4A5E;
-    --font: 'Nunito', system-ui, sans-serif; --display: 'Syne', var(--font);
+    --bg: #FFF4E0; --card: #fff; --ink: #1E293B; --muted: #64748B;
+    --orange: #F97316; --yellow: #EAB308; --green: #22C55E; --pink: #FB7185;
+    --sky: #7DD3FC; --line: #FDE68A;
+    --font: 'Nunito', system-ui, sans-serif; --display: 'Fredoka', var(--font);
   }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font); padding: 20px 16px 80px; }
-  h1 { font-family: var(--display); font-size: 1.6rem; margin: 0; }
-  .sub { color: var(--muted); margin: 4px 0 16px; font-size: .9rem; }
-  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px; margin: 12px 0; }
-  label { display: block; font-size: .75rem; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 4px; }
-  input { width: 100%; padding: 11px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); font: inherit; margin-bottom: 10px; }
-  button { font: inherit; font-weight: 800; border: 0; border-radius: 12px; padding: 12px 16px; cursor: pointer; background: var(--gold); color: #0B1F2A; }
-  button.ghost { background: transparent; color: var(--muted); border: 1px solid var(--line); }
-  button.danger { background: var(--coral); color: #0B1F2A; }
-  button.mint { background: var(--mint); }
+  body { margin: 0; background: linear-gradient(#7DD3FC 0 90px, var(--bg) 90px); color: var(--ink); font-family: var(--font); padding: 16px 14px 90px; }
+  h1 { font-family: var(--display); font-size: 1.75rem; margin: 8px 0 0; }
+  .sub { color: var(--muted); margin: 2px 0 14px; }
+  .card { background: var(--card); border-radius: 20px; padding: 16px; margin: 12px 0; box-shadow: 0 8px 0 rgba(0,0,0,.06); }
+  h2 { font-family: var(--display); margin: 0 0 10px; font-size: 1.25rem; }
+  label { display: block; font-size: .8rem; font-weight: 800; color: var(--muted); margin-bottom: 4px; }
+  input { width: 100%; padding: 12px; border-radius: 14px; border: 2px solid var(--line); background: #fff; font: inherit; margin-bottom: 10px; }
+  button { font: inherit; font-weight: 800; border: 0; border-radius: 999px; padding: 14px 18px; cursor: pointer; }
+  .big { width: 100%; background: var(--orange); color: #fff; font-size: 1.05rem; }
+  .mint { background: var(--green); color: #fff; }
+  .pink { background: var(--pink); color: #fff; }
+  .ghost { background: #F1F5F9; color: var(--ink); }
   .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-  .pill { display: inline-flex; align-items: center; gap: 6px; font-size: .75rem; font-weight: 800; padding: 5px 10px; border-radius: 999px; background: #1C4A5E; color: var(--muted); }
-  .pill.ok { color: var(--mint); }
-  .pill.bad { color: var(--coral); }
-  .prize { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); }
-  .prize:last-child { border-bottom: 0; }
-  .kid { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); }
-  .kid:last-child { border-bottom: 0; }
-  .tally { font-family: var(--display); font-size: 1.4rem; color: var(--gold); }
+  .pill { display: inline-flex; gap: 6px; align-items: center; font-weight: 800; font-size: .8rem; padding: 6px 12px; border-radius: 999px; background: #fff; }
+  .pill.ok { color: var(--green); } .pill.bad { color: var(--pink); }
+  .prize, .kid { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 12px 0; border-bottom: 2px dashed var(--line); }
+  .prize:last-child, .kid:last-child { border-bottom: 0; }
+  .tally { font-family: var(--display); font-size: 1.5rem; color: var(--orange); min-width: 2ch; text-align: right; }
   .hidden { display: none !important; }
-  .top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+  .top { display: flex; justify-content: space-between; align-items: flex-start; }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; }
 </style>
 </head>
 <body>
   <div class="top">
     <div>
-      <h1>Rewards Admin</h1>
-      <p class="sub">Prizes &amp; bonus points · MQTT</p>
+      <h1>Prize Shop</h1>
+      <p class="sub">Add prizes · give bonus points</p>
     </div>
-    <div class="pill" id="status"><span>●</span> Offline</div>
+    <div class="pill" id="status">Offline</div>
   </div>
 
   <div class="card" id="connectCard">
-    <label>Broker WebSocket URL</label>
+    <h2>Connect once</h2>
+    <p class="sub">Same login as Jobs Chooser</p>
+    <label>Broker</label>
     <input id="broker" placeholder="ws://homeassistant.local:1884">
     <div class="row">
-      <div><label>Username</label><input id="user" autocomplete="username"></div>
-      <div><label>Password</label><input id="pass" type="password" autocomplete="current-password"></div>
+      <div><label>Username</label><input id="user"></div>
+      <div><label>Password</label><input id="pass" type="password"></div>
     </div>
-    <label><input type="checkbox" id="remember"> Remember on this device</label>
-    <div style="margin-top:12px"><button id="connectBtn">Connect</button></div>
+    <label><input type="checkbox" id="remember" checked> Remember me</label>
+    <div style="margin-top:12px"><button class="big" id="connectBtn">Connect</button></div>
   </div>
 
   <div id="app" class="hidden">
     <div class="card">
-      <h2 style="font-family:var(--display);margin:0 0 8px">Prizes</h2>
+      <h2>Prizes on the screen</h2>
       <div id="prizes"></div>
-      <div style="margin-top:12px">
-        <label>New prize name</label>
-        <input id="newName" placeholder="Ice cream night">
-        <div class="row">
-          <div><label>Id (optional)</label><input id="newId" placeholder="ice_cream"></div>
-          <div><label>Cost (points)</label><input id="newCost" type="number" min="1" value="5"></div>
-        </div>
-        <button id="addPrize">Add prize</button>
-        <button class="mint" id="saveCatalog" style="margin-left:8px">Save to panel</button>
+      <label style="margin-top:12px">Prize name</label>
+      <input id="newName" placeholder="Ice cream night">
+      <label>How many points?</label>
+      <input id="newCost" type="number" min="1" value="5">
+      <div class="actions">
+        <button class="mint" id="addPrize">Add prize</button>
+        <button class="big" id="saveCatalog" style="width:auto">Save to screen</button>
       </div>
     </div>
 
     <div class="card">
-      <h2 style="font-family:var(--display);margin:0 0 8px">Bonus points</h2>
+      <h2>Give bonus points</h2>
       <div id="kids"></div>
     </div>
   </div>
 
 <script>
 const KIDS = [
-  {name:'Xavier', slug:'xavier'},
-  {name:'Presley', slug:'presley'},
-  {name:'Jax', slug:'jax'},
-  {name:'Banx', slug:'banx'},
-  {name:'Hazel', slug:'hazel'},
+  {name:'Xavier', slug:'xavier', color:'#3B82F6'},
+  {name:'Presley', slug:'presley', color:'#EC4899'},
+  {name:'Jax', slug:'jax', color:'#F59E0B'},
+  {name:'Banx', slug:'banx', color:'#22C55E'},
+  {name:'Hazel', slug:'hazel', color:'#A855F7'},
 ];
-let client = null;
-let catalog = [];
+let client = null, catalog = [];
 const tallies = Object.fromEntries(KIDS.map(k => [k.slug, 0]));
-
 const $ = id => document.getElementById(id);
-const statusEl = $('status');
 
 function setStatus(ok, text) {
-  statusEl.className = 'pill ' + (ok ? 'ok' : 'bad');
-  statusEl.innerHTML = '<span>●</span> ' + text;
+  $('status').className = 'pill ' + (ok ? 'ok' : 'bad');
+  $('status').textContent = text;
 }
-
 function slugify(s) {
-  return s.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 20) || ('p' + Date.now());
+  return s.toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'').slice(0,20) || ('p'+Date.now());
 }
-
-function renderPrizes() {
-  $('prizes').innerHTML = catalog.map((p, i) => `
-    <div class="prize">
-      <div><strong>${escapeHtml(p.name)}</strong><div class="sub" style="margin:0">${escapeHtml(p.id)} · ${p.cost} pts</div></div>
-      <button class="ghost" data-edit="${i}">Edit</button>
-      <button class="danger" data-del="${i}">Delete</button>
-    </div>`).join('') || '<p class="sub">No prizes yet</p>';
-  $('prizes').querySelectorAll('[data-del]').forEach(btn => btn.onclick = () => {
-    catalog.splice(+btn.dataset.del, 1); renderPrizes();
-  });
-  $('prizes').querySelectorAll('[data-edit]').forEach(btn => btn.onclick = () => {
-    const p = catalog[+btn.dataset.edit];
-    const name = prompt('Prize name', p.name); if (name == null) return;
-    const cost = prompt('Point cost', p.cost); if (cost == null) return;
-    p.name = name.trim() || p.name;
-    p.cost = Math.max(1, parseInt(cost, 10) || p.cost);
-    renderPrizes();
-  });
-}
-
-function renderKids() {
-  $('kids').innerHTML = KIDS.map(k => `
-    <div class="kid">
-      <div><strong>${k.name}</strong><div class="sub" style="margin:0">${k.slug}</div></div>
-      <div class="tally">${tallies[k.slug] ?? 0}</div>
-      <button class="mint" data-bonus="${k.slug}">+ Bonus</button>
-    </div>`).join('');
-  $('kids').querySelectorAll('[data-bonus]').forEach(btn => btn.onclick = () => {
-    const pts = prompt('Bonus points for ' + btn.dataset.bonus, '1');
-    if (pts == null) return;
-    const points = Math.max(1, parseInt(pts, 10) || 1);
-    client.publish('kids/rewards/bonus/set', JSON.stringify({ kid: btn.dataset.bonus, points }));
-  });
-}
-
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
-
+function renderPrizes() {
+  $('prizes').innerHTML = catalog.map((p,i) => `
+    <div class="prize">
+      <div><strong>${escapeHtml(p.name)}</strong><div class="sub" style="margin:0">${p.cost} points</div></div>
+      <div class="actions">
+        <button class="ghost" data-edit="${i}">Edit</button>
+        <button class="pink" data-del="${i}">Remove</button>
+      </div>
+    </div>`).join('') || '<p class="sub">No prizes yet — add one below</p>';
+  $('prizes').querySelectorAll('[data-del]').forEach(b => b.onclick = () => { catalog.splice(+b.dataset.del,1); renderPrizes(); });
+  $('prizes').querySelectorAll('[data-edit]').forEach(b => b.onclick = () => {
+    const p = catalog[+b.dataset.edit];
+    const name = prompt('Prize name', p.name); if (name == null) return;
+    const cost = prompt('Points needed', p.cost); if (cost == null) return;
+    p.name = name.trim() || p.name;
+    p.cost = Math.max(1, parseInt(cost,10) || p.cost);
+    renderPrizes();
+  });
+}
+function renderKids() {
+  $('kids').innerHTML = KIDS.map(k => `
+    <div class="kid">
+      <div style="display:flex;align-items:center;gap:10px">
+        <span style="width:14px;height:14px;border-radius:50%;background:${k.color}"></span>
+        <strong>${k.name}</strong>
+      </div>
+      <div class="tally">${tallies[k.slug]||0}</div>
+      <button class="mint" data-bonus="${k.slug}">+ Bonus</button>
+    </div>`).join('');
+  $('kids').querySelectorAll('[data-bonus]').forEach(b => b.onclick = () => {
+    const pts = prompt('How many bonus points for ' + b.dataset.bonus + '?', '1');
+    if (pts == null) return;
+    client.publish('kids/rewards/bonus/set', JSON.stringify({ kid: b.dataset.bonus, points: Math.max(1, parseInt(pts,10)||1) }));
+  });
+}
 function connect() {
   const url = $('broker').value.trim();
-  const username = $('user').value;
-  const password = $('pass').value;
-  if ($('remember').checked) {
-    localStorage.setItem('rewardsAdmin', JSON.stringify({ url, username, password, remember: true }));
-  } else {
-    localStorage.removeItem('rewardsAdmin');
-  }
-  if (client) try { client.end(true); } catch (_) {}
+  const username = $('user').value, password = $('pass').value;
+  if ($('remember').checked) localStorage.setItem('rewardsAdmin', JSON.stringify({url,username,password,remember:true}));
+  else localStorage.removeItem('rewardsAdmin');
+  if (client) try { client.end(true); } catch(_){}
   setStatus(false, 'Connecting…');
   client = mqtt.connect(url, { username, password, reconnectPeriod: 3000 });
   client.on('connect', () => {
@@ -160,8 +151,6 @@ function connect() {
     client.subscribe('kids/rewards/catalog');
     KIDS.forEach(k => client.subscribe(`kids/${k.slug}/rewards/tally`));
   });
-  client.on('reconnect', () => setStatus(false, 'Reconnecting…'));
-  client.on('error', () => setStatus(false, 'Error'));
   client.on('close', () => setStatus(false, 'Offline'));
   client.on('message', (topic, buf) => {
     const body = buf.toString();
@@ -170,44 +159,29 @@ function connect() {
       renderPrizes();
     }
     KIDS.forEach(k => {
-      if (topic === `kids/${k.slug}/rewards/tally`) {
-        tallies[k.slug] = parseInt(body, 10) || 0;
-        renderKids();
-      }
+      if (topic === `kids/${k.slug}/rewards/tally`) { tallies[k.slug] = parseInt(body,10)||0; renderKids(); }
     });
   });
 }
-
 $('connectBtn').onclick = connect;
 $('addPrize').onclick = () => {
-  const name = $('newName').value.trim();
-  if (!name) return;
-  const id = ($('newId').value.trim() || slugify(name)).slice(0, 23);
-  const cost = Math.max(1, parseInt($('newCost').value, 10) || 1);
-  catalog.push({ id, name, cost });
-  $('newName').value = ''; $('newId').value = '';
-  renderPrizes();
+  const name = $('newName').value.trim(); if (!name) return;
+  catalog.push({ id: slugify(name), name, cost: Math.max(1, parseInt($('newCost').value,10)||1) });
+  $('newName').value = ''; renderPrizes();
 };
 $('saveCatalog').onclick = () => {
-  if (!client || !client.connected) return alert('Not connected');
+  if (!client?.connected) return alert('Connect first');
   client.publish('kids/rewards/catalog/set', JSON.stringify(catalog));
+  alert('Saved! The prize screen will update.');
 };
-
 (function init() {
   const host = location.hostname || 'homeassistant.local';
   $('broker').value = `ws://${host}:1884`;
   try {
-    const saved = JSON.parse(localStorage.getItem('rewardsAdmin') || 'null');
-    if (saved?.remember) {
-      $('broker').value = saved.url || $('broker').value;
-      $('user').value = saved.username || '';
-      $('pass').value = saved.password || '';
-      $('remember').checked = true;
-      connect();
-    }
-  } catch (_) {}
-  renderPrizes();
-  renderKids();
+    const s = JSON.parse(localStorage.getItem('rewardsAdmin')||'null');
+    if (s?.remember) { $('broker').value = s.url||$('broker').value; $('user').value = s.username||''; $('pass').value = s.password||''; connect(); }
+  } catch(_){}
+  renderPrizes(); renderKids();
 })();
 </script>
 </body>

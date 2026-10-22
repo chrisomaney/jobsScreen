@@ -100,10 +100,10 @@ void RewardState::addBonus(size_t kid, uint32_t points) {
   tallies_[kid] += points;
   saveTallies();
   char sub[64];
-  snprintf(sub, sizeof(sub), "+%lu points  ·  now %lu",
+  snprintf(sub, sizeof(sub), "+%lu points!  Now you have %lu",
            static_cast<unsigned long>(points),
            static_cast<unsigned long>(tallies_[kid]));
-  queueSplash(SplashKind::Bonus, kid, "BONUS!", sub);
+  queueSplash(SplashKind::Bonus, kid, "BONUS POINTS!", sub);
   (void)before;
 }
 
@@ -115,10 +115,9 @@ bool RewardState::tryClaim(size_t kid, size_t prize_index, uint32_t *tally_befor
   const uint32_t before = tallies_[kid];
   if (before < cost) {
     char sub[64];
-    snprintf(sub, sizeof(sub), "Need %lu · you have %lu",
-             static_cast<unsigned long>(cost),
-             static_cast<unsigned long>(before));
-    queueSplash(SplashKind::KeepGoing, kid, "Keep going!", sub);
+    snprintf(sub, sizeof(sub), "You need %lu more points",
+             static_cast<unsigned long>(cost - before));
+    queueSplash(SplashKind::KeepGoing, kid, "Keep earning!", sub);
     return false;
   }
   tallies_[kid] = before - cost;
@@ -130,8 +129,8 @@ bool RewardState::tryClaim(size_t kid, size_t prize_index, uint32_t *tally_befor
     *tally_after = tallies_[kid];
   }
   char sub[64];
-  snprintf(sub, sizeof(sub), "%s", prizes_[prize_index].name);
-  queueSplash(SplashKind::Winner, kid, "WINNER!", sub);
+  snprintf(sub, sizeof(sub), "You got: %s", prizes_[prize_index].name);
+  queueSplash(SplashKind::Winner, kid, "YOU WIN!", sub);
   return true;
 }
 

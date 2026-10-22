@@ -24,28 +24,36 @@ private:
 
   lv_obj_t *screen_ = nullptr;
   lv_obj_t *ad_layer_ = nullptr;
+  lv_obj_t *prize_card_ = nullptr;
   lv_obj_t *prize_name_ = nullptr;
   lv_obj_t *prize_cost_ = nullptr;
-  lv_obj_t *score_ticker_ = nullptr;
-  lv_obj_t *hint_ = nullptr;
+  lv_obj_t *want_btn_ = nullptr;
+  lv_obj_t *score_row_ = nullptr;
+  lv_obj_t *score_chips_[KID_COUNT]{};
 
   lv_obj_t *picker_layer_ = nullptr;
   lv_obj_t *picker_title_ = nullptr;
+  lv_obj_t *picker_sub_ = nullptr;
+  lv_obj_t *kid_btns_[KID_COUNT]{};
+  lv_obj_t *kid_lbls_[KID_COUNT]{};
 
   lv_obj_t *splash_layer_ = nullptr;
   lv_obj_t *splash_title_ = nullptr;
   lv_obj_t *splash_sub_ = nullptr;
   lv_obj_t *splash_kid_ = nullptr;
+  lv_obj_t *splash_stars_ = nullptr;
 
   void build();
   void showAds();
   void showPicker(size_t prize_index);
   void showSplashFromState();
   void refreshAd();
-  void refreshTicker();
+  void refreshScores();
+  void refreshPickerButtons();
   void setMode(Mode m);
+  void cycleAdBg();
 
-  static void onAdClick(lv_event_t *e);
+  static void onWantClick(lv_event_t *e);
   static void onKidClick(lv_event_t *e);
   static void onCancelClick(lv_event_t *e);
   static AppUi *self_;
