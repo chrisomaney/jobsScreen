@@ -1,68 +1,96 @@
-# Home Assistant snippets — Xavier / Presley / Jax / Banx / Hazel
-# Internet unlock is per-kid (own list complete). Rewards tally is for leftover helpers.
+# Home Assistant — kids jobs panel
+#
+# Internet unlock is driven by MikroTik IoT MQTT directly
+# (see examples/mikrotik-kids-control.rsc). HA only shows status + notifies.
+# Do NOT also call MikroTik from HA or you will double-toggle.
 
 mqtt:
   binary_sensor:
     - name: "Xavier Internet Ready"
+      unique_id: kids_xavier_internet
       state_topic: "kids/xavier/internet"
       payload_on: "on"
       payload_off: "off"
+      device_class: connectivity
     - name: "Presley Internet Ready"
+      unique_id: kids_presley_internet
       state_topic: "kids/presley/internet"
       payload_on: "on"
       payload_off: "off"
+      device_class: connectivity
     - name: "Jax Internet Ready"
+      unique_id: kids_jax_internet
       state_topic: "kids/jax/internet"
       payload_on: "on"
       payload_off: "off"
+      device_class: connectivity
     - name: "Banx Internet Ready"
+      unique_id: kids_banx_internet
       state_topic: "kids/banx/internet"
       payload_on: "on"
       payload_off: "off"
+      device_class: connectivity
     - name: "Hazel Internet Ready"
+      unique_id: kids_hazel_internet
       state_topic: "kids/hazel/internet"
       payload_on: "on"
       payload_off: "off"
+      device_class: connectivity
 
   sensor:
     - name: "Xavier Rewards Tally"
+      unique_id: kids_xavier_rewards
       state_topic: "kids/xavier/rewards/tally"
     - name: "Presley Rewards Tally"
+      unique_id: kids_presley_rewards
       state_topic: "kids/presley/rewards/tally"
     - name: "Jax Rewards Tally"
+      unique_id: kids_jax_rewards
       state_topic: "kids/jax/rewards/tally"
     - name: "Banx Rewards Tally"
+      unique_id: kids_banx_rewards
       state_topic: "kids/banx/rewards/tally"
     - name: "Hazel Rewards Tally"
+      unique_id: kids_hazel_rewards
       state_topic: "kids/hazel/rewards/tally"
     - name: "Xavier Jobs Progress"
+      unique_id: kids_xavier_progress
       state_topic: "kids/xavier/progress"
       value_template: "{{ value_json.pct }}"
       unit_of_measurement: "%"
       json_attributes_topic: "kids/xavier/progress"
 
 automation:
-  - id: xavier_internet_on
-    alias: "Xavier — unlock MikroTik when own jobs done"
+  # Notify when any kid unlocks (MikroTik already resumed via IoT MQTT)
+  - id: kids_internet_unlocked_notify
+    alias: "Kids — internet unlocked (notify)"
+    mode: queued
     trigger:
       - platform: mqtt
-        topic: kids/xavier/internet
+        topic: kids/+/internet
         payload: "on"
     action:
-      - service: notify.persistent_notification
+      - service: notify.notify
         data:
-          message: "Xavier finished own jobs — enable MikroTik profile"
+          title: "Internet unlocked"
+          message: >
+            {{ trigger.topic.split('/')[1] | title }} finished their jobs.
+            MikroTik Kid Control should be resumed.
 
-  - id: xavier_internet_off
-    alias: "Xavier — lock MikroTik when own jobs incomplete"
+  - id: kids_internet_locked_notify
+    alias: "Kids — internet locked (notify)"
+    mode: queued
     trigger:
       - platform: mqtt
-        topic: kids/xavier/internet
+        topic: kids/+/internet
         payload: "off"
     action:
-      - service: notify.persistent_notification
+      - service: notify.notify
         data:
-          message: "Xavier still has jobs — keep MikroTik locked"
+          title: "Internet locked"
+          message: >
+            {{ trigger.topic.split('/')[1] | title }} still has jobs.
+            MikroTik Kid Control should be paused.
 
   - id: kids_rewards_help_event
     alias: "Kids — reward help from leftover screen"
@@ -78,10 +106,21 @@ automation:
             {{ trigger.payload_json.job_label }}
             (tally {{ trigger.payload_json.tally }})
 
-  # Optional: the panel now resets itself daily at DAILY_RESET_HOUR (03:00).
-  # Keep this only if you want an extra reset from Home Assistant.
+  - id: kids_rewards_celebrate_notify
+    alias: "Kids — prize celebrate notify"
+    trigger:
+      - platform: mqtt
+        topic: kids/rewards/celebrate
+    action:
+      - service: notify.notify
+        data:
+          title: "{{ trigger.payload_json.title }}"
+          message: >
+            {{ trigger.payload_json.kid }} — {{ trigger.payload_json.subtitle }}
+
+  # Optional: panel already resets daily at DAILY_RESET_HOUR (default 03:00).
   - id: kids_jobs_morning_reset
-    alias: "Kids jobs — morning reset"
+    alias: "Kids jobs — morning reset (optional HA)"
     trigger:
       - platform: time
         at: "05:30:00"
