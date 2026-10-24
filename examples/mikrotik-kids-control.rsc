@@ -83,7 +83,8 @@ add broker="ha-mosquitto" topic="kids/hazel/internet" qos=0 on-message={
   }
 }
 
-# Optional — create all-day profiles (skip if they already exist):
+# --- Optional one-shot setup (run once; always use leading / so it works from any menu) ---
+# Create all-day profiles (skip if they already exist):
 # /ip kid-control add name=xavier  sun=0s-1d mon=0s-1d tue=0s-1d wed=0s-1d thu=0s-1d fri=0s-1d sat=0s-1d
 # /ip kid-control add name=presley sun=0s-1d mon=0s-1d tue=0s-1d wed=0s-1d thu=0s-1d fri=0s-1d sat=0s-1d
 # /ip kid-control add name=jax     sun=0s-1d mon=0s-1d tue=0s-1d wed=0s-1d thu=0s-1d fri=0s-1d sat=0s-1d
@@ -96,8 +97,8 @@ add broker="ha-mosquitto" topic="kids/hazel/internet" qos=0 on-message={
 # Start locked until jobs are done:
 # /ip kid-control pause xavier,presley,jax,banx,hazel
 #
-# Check:
-# /iot mqtt brokers print
-# /iot mqtt subscriptions print detail
-# /ip kid-control print
+# Check (paste these — leading / is required if you are inside a submenu):
+# /iot/mqtt/brokers print
+# /iot/mqtt/subscriptions print detail
+# /ip/kid-control print
 # /log print where message~"kids-jobs"
