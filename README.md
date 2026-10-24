@@ -143,10 +143,10 @@ Profile **names** must match the slugs: `xavier`, `presley`, `jax`, `banx`, `haz
 **Setup**
 
 1. Install the MikroTik **IoT** package; create Kid Control profiles named as above and attach each kid’s devices (MAC).
-2. Edit broker `address` / `username` / `password` in [`examples/mikrotik-kids-control.rsc`](examples/mikrotik-kids-control.rsc), then paste into Terminal (or System → Scripts).
+2. Edit broker `address` / `username` / `password` in [`examples/mikrotik-kids-control.rsc`](examples/mikrotik-kids-control.rsc), then paste into Terminal (or System → Scripts). Keep **`auto-connect=yes`** — without it the MQTT link drops after a few minutes and pause/resume stops working.
 3. Optionally pause everyone at first so devices stay locked until jobs are done:  
    `/ip kid-control pause xavier,presley,jax,banx,hazel`
-4. Check: `/iot mqtt subscriptions print detail` and `/log print where message~"kids-jobs"`.
+4. Check: `/iot/mqtt/brokers print` should show `connected=yes` and `auto-connect=yes`; `/iot/mqtt/subscriptions print detail`; `/log print where message~"kids-jobs"`.
 
 Give the router its own Mosquitto user that can **read** `kids/+/internet` (and nothing else if you want).
 

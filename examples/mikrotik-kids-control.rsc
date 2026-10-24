@@ -13,12 +13,14 @@
 #
 # Import: System → Scripts → or paste into Terminal.
 
-# --- MQTT broker (edit these three lines) ---
+# --- MQTT broker (edit address / username / password) ---
+# auto-connect=yes is required — default is no, so the link drops after a few
+# minutes and on-message (pause/resume) silently stops until you reconnect.
 /iot mqtt brokers
 :if ([:len [find where name="ha-mosquitto"]] = 0) do={
-  add name="ha-mosquitto" address="192.168.1.10" port=1883 username="" password="" ssl=no
+  add name="ha-mosquitto" address="192.168.1.10" port=1883 username="" password="" ssl=no auto-connect=yes keep-alive=60
 } else={
-  set [find where name="ha-mosquitto"] address="192.168.1.10" port=1883 username="" password="" ssl=no
+  set [find where name="ha-mosquitto"] address="192.168.1.10" port=1883 username="" password="" ssl=no auto-connect=yes keep-alive=60
 }
 
 # --- Remove old kids-jobs subscriptions for this broker ---
@@ -82,6 +84,11 @@ add broker="ha-mosquitto" topic="kids/hazel/internet" qos=0 on-message={
     :log info "kids-jobs: PAUSE hazel"
   }
 }
+
+# Re-establish MQTT after adding subscriptions (RouterOS requires this if already connected)
+/iot mqtt disconnect broker="ha-mosquitto"
+:delay 1s
+/iot mqtt connect broker="ha-mosquitto"
 
 # --- Optional one-shot setup (run once; always use leading / so it works from any menu) ---
 # Create all-day profiles (skip if they already exist):
