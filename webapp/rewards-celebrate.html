@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prize Party!</title>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@700&family=Nunito:wght@800&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
+<style>
+  html, body { height: 100%; margin: 0; }
+  body {
+    font-family: 'Nunito', system-ui, sans-serif;
+    background: #7DD3FC;
+    color: #1E293B;
+    display: grid; place-items: center; overflow: hidden;
+    transition: background .35s;
+  }
+  #idle, #splash { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 40px; }
+  #splash { display: none; }
+  #splash.show { display: grid; animation: pop .5s cubic-bezier(.2,1.6,.3,1); }
+  h1 { font-family: 'Fredoka', sans-serif; font-size: clamp(3.5rem, 12vw, 8rem); margin: 0; }
+  .kid { font-size: clamp(2rem, 6vw, 3.5rem); font-weight: 800; margin: 10px 0; }
+  .sub { font-size: clamp(1.2rem, 3.5vw, 2rem); max-width: 16ch; margin: 0 auto; }
+  .wait { font-size: 1.4rem; font-weight: 800; opacity: .75; }
+  .gear { position: fixed; top: 10px; right: 10px; opacity: .4; display: flex; gap: 6px; }
+  .gear input { width: 160px; padding: 8px; border-radius: 10px; border: 0; font: inherit; }
+  @keyframes pop { from { transform: scale(.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+  body.winner { background: #4ADE80; }
+  body.bonus { background: #FB7185; color: #fff; }
+</style>
+</head>
+<body>
+  <div class="gear">
+    <input id="broker" placeholder="ws://…:1884">
+    <input id="user" placeholder="user" style="width:80px">
+    <input id="pass" type="password" placeholder="pass" style="width:80px">
+  </div>
+  <div id="idle"><p class="wait">Waiting for a winner…</p></div>
+  <div id="splash">
+    <div>
+      <div style="font-size:2rem;margin-bottom:8px">* * * * *</div>
+      <h1 id="title">YOU WIN!</h1>
+      <div class="kid" id="kid"></div>
+      <div class="sub" id="sub"></div>
+    </div>
+  </div>
+<script>
+const NAMES = {xavier:'Xavier',presley:'Presley',jax:'Jax',banx:'Banx',hazel:'Hazel'};
+let hideTimer, client;
+function show(msg) {
+  document.body.className = msg.type === 'bonus' ? 'bonus' : 'winner';
+  document.getElementById('idle').style.display = 'none';
+  const splash = document.getElementById('splash');
+  splash.classList.add('show');
+  document.getElementById('title').textContent = msg.type === 'bonus' ? 'BONUS!' : 'YOU WIN!';
+  document.getElementById('kid').textContent = NAMES[msg.kid] || msg.kid || '';
+  document.getElementById('sub').textContent = msg.subtitle || msg.prize_name || '';
+  clearTimeout(hideTimer);
+  hideTimer = setTimeout(() => {
+    splash.classList.remove('show');
+    document.getElementById('idle').style.display = 'grid';
+    document.body.className = '';
+  }, 8000);
+}
+function connect() {
+  const url = document.getElementById('broker').value.trim() || `ws://${location.hostname||'homeassistant.local'}:1884`;
+  const username = document.getElementById('user').value;
+  const password = document.getElementById('pass').value;
+  localStorage.setItem('rewardsCelebrate', JSON.stringify({ url, username, password }));
+  if (client) try { client.end(true); } catch(_){}
+  client = mqtt.connect(url, { username, password, reconnectPeriod: 3000 });
+  client.on('connect', () => client.subscribe('kids/rewards/celebrate'));
+  client.on('message', (topic, buf) => {
+    if (topic !== 'kids/rewards/celebrate') return;
+    try { show(JSON.parse(buf.toString())); } catch(_){}
+  });
+}
+(function () {
+  const host = location.hostname || 'homeassistant.local';
+  document.getElementById('broker').value = `ws://${host}:1884`;
+  try {
+    const s = JSON.parse(localStorage.getItem('rewardsCelebrate')||'null');
+    if (s) {
+      document.getElementById('broker').value = s.url || document.getElementById('broker').value;
+      document.getElementById('user').value = s.username || '';
+      document.getElementById('pass').value = s.password || '';
+    }
+  } catch(_){}
+  ['broker','user','pass'].forEach(id => document.getElementById(id).addEventListener('change', connect));
+  connect();
+})();
+</script>
+</body>
+</html>

@@ -1,4 +1,16 @@
-# Jobs Chooser web app
+# Family panel web apps
+
+| File | Purpose |
+|------|---------|
+| `index.html` | **Jobs Chooser** — who does which job on the jobs panel |
+| `rewards-admin.html` | **Rewards Admin** — prize catalog + bonus points (rewards panel) |
+| `rewards-celebrate.html` | **Celebrate** — full-screen WINNER/BONUS for phone or Android TV browser |
+
+Copy into Home Assistant `www` (e.g. `/config/www/kids-jobs/` and `/config/www/kids-rewards/`).
+
+---
+
+# Jobs Chooser
 
 A single HTML file for choosing which kid does which job on the panel. Open it on your phone, tick the boxes and tap **Save to panel**.
 
