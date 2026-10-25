@@ -229,7 +229,7 @@ void MqttBridge::publishCommonInternet() {
   if (!client_.connected()) {
     return;
   }
-  // Xavier or Presley finishing their own jobs unlocks shared COMMON devices.
+  // Xavier or Presley finishing their own jobs unlocks shared "common" devices.
   bool ready = false;
   for (size_t i = 0; i < COMMON_UNLOCK_KID_COUNT; ++i) {
     const size_t kid = COMMON_UNLOCK_KIDS[i];

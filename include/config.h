@@ -110,7 +110,7 @@ static const int DAILY_RESET_MINUTE = 0;
 //   kids/{slug}/job/{job_id}/state     payload: "done" | "todo"
 //   kids/{slug}/internet               payload: "on" | "off"  (own list complete)
 //   kids/common/internet               payload: "on" | "off"  (Xavier OR Presley ready
-//                                      → MikroTik Kid Control profile COMMON)
+//                                      → MikroTik Kid Control profile "common")
 //   kids/{slug}/progress               payload: JSON {"done":n,"total":m,"pct":p}
 //   kids/{slug}/rewards/tally          payload: integer count (help credits)
 //   kids/rewards/event                 payload: JSON doer/owner/job (not retained)

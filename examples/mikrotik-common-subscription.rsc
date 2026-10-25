@@ -3,7 +3,7 @@
 # Panel publishes retained kids/common/internet = on|off
 # when Xavier and/or Presley finish their own required jobs.
 #
-# Profile name must be exactly: COMMON
+# Profile name must be exactly: common  (lowercase)
 # Paste from Terminal root (/). Broker ha-mosquitto must already exist.
 
 /iot mqtt subscriptions
@@ -14,14 +14,14 @@
 /iot mqtt subscriptions
 add broker="ha-mosquitto" topic="kids/common/internet" qos=0 on-message={
   :local d [:tostr $msgData]
-  :log info ("kids-jobs: COMMON got [" . $d . "]")
+  :log info ("kids-jobs: common got [" . $d . "]")
   :if ($d = "on") do={
-    /ip kid-control resume [find where name="COMMON"]
-    :log info "kids-jobs: RESUME COMMON"
+    /ip kid-control resume [find where name="common"]
+    :log info "kids-jobs: RESUME common"
   }
   :if ($d = "off") do={
-    /ip kid-control pause [find where name="COMMON"]
-    :log info "kids-jobs: PAUSE COMMON"
+    /ip kid-control pause [find where name="common"]
+    :log info "kids-jobs: PAUSE common"
   }
 }
 
@@ -31,4 +31,4 @@ add broker="ha-mosquitto" topic="kids/common/internet" qos=0 on-message={
 
 # Check:
 # /iot/mqtt/subscriptions print detail
-# /log print where message~"COMMON"
+# /log print where message~"common"
