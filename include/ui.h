@@ -2,6 +2,7 @@
 
 #include "job_state.h"
 #include "mqtt_bridge.h"
+#include "reward_engine.h"
 #include <lvgl.h>
 
 enum class KidPage : uint8_t {
@@ -11,7 +12,7 @@ enum class KidPage : uint8_t {
 
 class AppUi {
 public:
-  void begin(JobState *state, MqttBridge *mqtt);
+  void begin(JobState *state, MqttBridge *mqtt, RewardEngine *rewards);
   void showIdle();
   void showHome();
   void showKidPage(size_t kid, KidPage page);
@@ -32,6 +33,8 @@ private:
 
   JobState *state_ = nullptr;
   MqttBridge *mqtt_ = nullptr;
+  RewardEngine *rewards_ = nullptr;
+  uint32_t seen_rewards_revision_ = 0;
   size_t active_kid_ = 0;
   KidPage active_page_ = KidPage::Expectations;
   ScreenKind screen_kind_ = ScreenKind::Idle;
@@ -75,6 +78,10 @@ private:
   lv_obj_t *splash_sub_ = nullptr;
   lv_obj_t *splash_kid_ = nullptr;
   lv_obj_t *splash_stars_ = nullptr;
+
+  lv_obj_t *msg_layer_ = nullptr;
+  lv_obj_t *msg_title_ = nullptr;
+  lv_obj_t *msg_body_ = nullptr;
 
   lv_obj_t *status_label_ = nullptr;
   lv_obj_t *clock_label_ = nullptr;
@@ -126,6 +133,8 @@ private:
   void cyclePrizeRim();
   void showPrizePicker(size_t prize_index);
   void showPrizeSplashFromState();
+  void buildMessageOverlay();
+  void refreshMessageOverlay();
 
   static void onLetsGo(lv_event_t *e);
   static void onWantPrize(lv_event_t *e);

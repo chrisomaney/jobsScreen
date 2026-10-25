@@ -636,6 +636,17 @@ void JobState::addBonus(size_t kid, uint32_t points) {
   queueSplash(SplashKind::Bonus, kid, "BONUS POINTS!", sub);
 }
 
+void JobState::addPoints(size_t kid, uint32_t points) {
+  if (kid >= KID_COUNT || points == 0) {
+    return;
+  }
+  rewards_[kid] += points;
+  persistReward(kid);
+  bump();
+}
+
+int JobState::findJobIndex(const char *id) { return jobIndex(id); }
+
 void JobState::resetRewards() {
   for (size_t k = 0; k < KID_COUNT; ++k) {
     rewards_[k] = 0;

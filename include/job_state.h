@@ -51,7 +51,10 @@ public:
   void addReward(size_t doer);
   void setRewardTally(size_t kid, uint32_t value);
   void addBonus(size_t kid, uint32_t points);
+  // Add points without a splash (scheduled rules); still bumps revision.
+  void addPoints(size_t kid, uint32_t points);
   void resetRewards();
+  static int findJobIndex(const char *id);
 
   // Prize shop (idle screen) — catalog in NVS "prizes"; tallies share rewards_[]
   size_t prizeCount() const { return prize_count_; }

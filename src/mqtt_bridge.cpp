@@ -16,8 +16,9 @@ void mqttTrampoline(char *topic, byte *payload, unsigned int length) {
 
 }  // namespace
 
-void MqttBridge::begin(JobState *state) {
+void MqttBridge::begin(JobState *state, RewardEngine *rewards) {
   state_ = state;
+  rewards_ = rewards;
   g_mqtt = this;
   client_.setClient(wifi_);
   client_.setServer(MQTT_HOST, MQTT_PORT);
@@ -80,6 +81,8 @@ void MqttBridge::ensureConnected() {
   }
   client_.subscribe(MQTT_CATALOG_SET);
   client_.subscribe(MQTT_BONUS_SET);
+  client_.subscribe(MQTT_RULES_SET);
+  client_.subscribe(MQTT_PANEL_MESSAGE_SET);
   for (size_t k = 0; k < KID_COUNT; ++k) {
     client_.subscribe(topicRewardTally(k).c_str());
   }
@@ -126,6 +129,37 @@ void MqttBridge::handleMessage(char *topic, byte *payload, unsigned int length) 
       publishCatalog();
       Serial.println("[mqtt] prize catalog updated");
     }
+    return;
+  }
+
+  if (t == MQTT_RULES_SET && rewards_) {
+    String body;
+    body.reserve(length + 1);
+    for (unsigned int i = 0; i < length; ++i) {
+      body += static_cast<char>(payload[i]);
+    }
+    if (rewards_->applyRulesJson(body.c_str())) {
+      publishRules();
+      Serial.println("[mqtt] reward rules updated");
+    }
+    return;
+  }
+
+  if (t == MQTT_PANEL_MESSAGE_SET && rewards_) {
+    String body;
+    body.reserve(length + 1);
+    for (unsigned int i = 0; i < length; ++i) {
+      body += static_cast<char>(payload[i]);
+    }
+    JsonDocument doc;
+    if (deserializeJson(doc, body)) {
+      return;
+    }
+    const char *title = doc["title"] | "Message";
+    const char *text = doc["text"] | "";
+    const uint32_t seconds = doc["seconds"] | 12;
+    rewards_->setPanelMessage(title, text, seconds);
+    Serial.println("[mqtt] panel message set");
     return;
   }
 
@@ -267,6 +301,14 @@ void MqttBridge::publishCatalog() {
   client_.publish(MQTT_CATALOG_TOPIC, json.c_str(), true);
 }
 
+void MqttBridge::publishRules() {
+  if (!client_.connected() || !rewards_) {
+    return;
+  }
+  const String json = rewards_->rulesStateJson();
+  client_.publish(MQTT_RULES_STATE, json.c_str(), true);
+}
+
 void MqttBridge::publishClaim(size_t kid, size_t prize_index, uint32_t before, uint32_t after) {
   if (!client_.connected() || prize_index >= state_->prizeCount()) {
     return;
@@ -338,6 +380,7 @@ void MqttBridge::publishCelebrateBonus(size_t kid, uint32_t points, uint32_t aft
 void MqttBridge::publishAll() {
   publishConfig();
   publishCatalog();
+  publishRules();
   for (size_t k = 0; k < KID_COUNT; ++k) {
     for (size_t j = 0; j < JOB_COUNT; ++j) {
       publishJob(k, j);

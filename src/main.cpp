@@ -9,11 +9,13 @@
 #include "display_board.h"
 #include "job_state.h"
 #include "mqtt_bridge.h"
+#include "reward_engine.h"
 #include "ui.h"
 
 namespace {
 
 JobState g_state;
+RewardEngine g_rewards;
 MqttBridge g_mqtt;
 AppUi g_ui;
 
@@ -90,6 +92,7 @@ void setup() {
   Serial.printf("[boot] psram %u bytes\n", static_cast<unsigned>(ESP.getPsramSize()));
 
   g_state.begin();
+  g_rewards.begin(&g_state);
 
   if (!display_board_init()) {
     Serial.println("FATAL: display init failed");
@@ -98,8 +101,8 @@ void setup() {
     }
   }
 
-  g_mqtt.begin(&g_state);
-  g_ui.begin(&g_state, &g_mqtt);
+  g_mqtt.begin(&g_state, &g_rewards);
+  g_ui.begin(&g_state, &g_mqtt, &g_rewards);
 
   startWifi();
   clock_begin_ntp();  // SNTP keeps retrying until Wi-Fi is up
@@ -108,6 +111,15 @@ void setup() {
 void loop() {
   maintainWifi();
   maintainDailyReset();
+  g_rewards.tickMessage();
+  const uint8_t awarded = g_rewards.tickSchedule();
+  if (awarded) {
+    for (size_t k = 0; k < KID_COUNT; ++k) {
+      if (awarded & (1u << k)) {
+        g_mqtt.publishRewardTally(k);
+      }
+    }
+  }
   g_mqtt.loop();
   g_ui.tick();
   display_board_loop();
