@@ -40,15 +40,19 @@ static const uint32_t CAROUSEL_MS = 5000;
 static const uint32_t SPLASH_MS = 7500;
 static const uint32_t CLAIM_DEBOUNCE_MS = 600;
 
-// Bright playground palette
-static const uint32_t COL_BG = 0xFFF4E0;       // warm cream
-static const uint32_t COL_SKY = 0x7DD3FC;      // sky blue band
-static const uint32_t COL_CARD = 0xFFFFFF;
-static const uint32_t COL_ACCENT = 0xF97316;   // juicy orange
-static const uint32_t COL_COST = 0xEAB308;     // sunny yellow
-static const uint32_t COL_WIN = 0x4ADE80;      // lime win
-static const uint32_t COL_BONUS = 0xFB7185;    // candy pink bonus
-static const uint32_t COL_KEEP = 0x60A5FA;     // soft blue keep-going
-static const uint32_t COL_TEXT = 0x1E293B;
-static const uint32_t COL_MUTED = 0x64748B;
-static const uint32_t COL_BTN_BACK = 0xCBD5E1;
+// Neon arcade / futuristic palette (dark + cyan)
+static const uint32_t COL_BG = 0x070B16;       // deep space
+static const uint32_t COL_BG2 = 0x101A2E;      // gradient end
+static const uint32_t COL_SKY = 0x0E1A33;      // header strip
+static const uint32_t COL_CARD = 0x121C33;     // glass panel
+static const uint32_t COL_ACCENT = 0x22D3EE;   // neon cyan
+static const uint32_t COL_ACCENT2 = 0x67E8F9;  // bright cyan press
+static const uint32_t COL_COST = 0xFDE047;     // electric gold
+static const uint32_t COL_WIN = 0x10B981;      // emerald win
+static const uint32_t COL_BONUS = 0xF43F5E;    // hot bonus
+static const uint32_t COL_KEEP = 0x3B82F6;     // keep-going blue
+static const uint32_t COL_TEXT = 0xF8FAFC;     // near-white
+static const uint32_t COL_MUTED = 0x94A3B8;    // steel
+static const uint32_t COL_BTN_BACK = 0x1E293B; // slate back
+static const uint32_t COL_LINE = 0x1E3A5F;     // grid lines
+static const uint32_t COL_GLOW = 0x0891B2;     // cyan rim

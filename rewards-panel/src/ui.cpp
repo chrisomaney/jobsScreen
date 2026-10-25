@@ -25,29 +25,73 @@ void strip_chrome(lv_obj_t *o) {
   lv_obj_set_style_radius(o, 0, 0);
 }
 
-lv_obj_t *make_full_layer(lv_obj_t *parent, uint32_t bg) {
+void style_space_bg(lv_obj_t *o) {
+  strip_chrome(o);
+  lv_obj_set_style_bg_color(o, c(COL_BG), 0);
+  lv_obj_set_style_bg_grad_color(o, c(COL_BG2), 0);
+  lv_obj_set_style_bg_grad_dir(o, LV_GRAD_DIR_VER, 0);
+  lv_obj_set_style_bg_main_stop(o, 0, 0);
+  lv_obj_set_style_bg_grad_stop(o, 255, 0);
+  lv_obj_set_style_bg_opa(o, LV_OPA_COVER, 0);
+}
+
+lv_obj_t *make_full_layer(lv_obj_t *parent) {
   lv_obj_t *layer = lv_obj_create(parent);
-  strip_chrome(layer);
+  style_space_bg(layer);
   lv_obj_set_size(layer, LCD_H_RES, LCD_V_RES);
   lv_obj_set_pos(layer, 0, 0);
-  lv_obj_set_style_bg_color(layer, c(bg), 0);
-  lv_obj_set_style_bg_opa(layer, LV_OPA_COVER, 0);
   lv_obj_clear_flag(layer, LV_OBJ_FLAG_SCROLLABLE);
   return layer;
 }
 
-// Rotate prize-card accent so each ad feels fresh
-const uint32_t AD_BANDS[] = {0xFDE68A, 0xFBCFE8, 0xBBF7D0, 0xBAE6FD, 0xDDD6FE};
-const size_t AD_BAND_COUNT = sizeof(AD_BANDS) / sizeof(AD_BANDS[0]);
+lv_obj_t *make_bar(lv_obj_t *parent, int x, int y, int w, int h, uint32_t color, lv_opa_t opa) {
+  lv_obj_t *bar = lv_obj_create(parent);
+  strip_chrome(bar);
+  lv_obj_set_size(bar, w, h);
+  lv_obj_set_pos(bar, x, y);
+  lv_obj_set_style_bg_color(bar, c(color), 0);
+  lv_obj_set_style_bg_opa(bar, opa, 0);
+  lv_obj_clear_flag(bar, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+  return bar;
+}
 
-// Absolute layout for 800×480 — no BOTTOM_MID (breaks if parent has theme pad).
-constexpr int SKY_H = 64;
-constexpr int CARD_Y = 76;
-constexpr int CARD_H = 200;
-constexpr int WANT_Y = 292;
-constexpr int WANT_H = 70;
-constexpr int SCORE_Y = 386;
-constexpr int SCORE_H = 72;
+// Soft neon HUD / floor-grid backdrop (stays behind controls)
+void paint_hud_backdrop(lv_obj_t *parent) {
+  // Soft upper wash
+  make_bar(parent, 0, 0, LCD_H_RES, 70, COL_SKY, LV_OPA_COVER);
+
+  // Floor grid under the action area (below prize card)
+  constexpr int floor_y = 370;
+  make_bar(parent, 0, floor_y, LCD_H_RES, 2, COL_ACCENT, LV_OPA_50);
+  for (int i = 0; i < 9; ++i) {
+    make_bar(parent, 40 + i * 90, floor_y, 1, LCD_V_RES - floor_y, COL_LINE, LV_OPA_50);
+  }
+  for (int i = 0; i < 3; ++i) {
+    make_bar(parent, 0, floor_y + 20 + i * 24, LCD_H_RES, 1, COL_LINE, LV_OPA_30);
+  }
+
+  // Corner ticks
+  make_bar(parent, 16, 16, 36, 3, COL_ACCENT, LV_OPA_COVER);
+  make_bar(parent, 16, 16, 3, 36, COL_ACCENT, LV_OPA_COVER);
+  make_bar(parent, LCD_H_RES - 52, 16, 36, 3, COL_ACCENT, LV_OPA_COVER);
+  make_bar(parent, LCD_H_RES - 19, 16, 3, 36, COL_ACCENT, LV_OPA_COVER);
+  make_bar(parent, 16, LCD_V_RES - 19, 36, 3, COL_ACCENT, LV_OPA_COVER);
+  make_bar(parent, 16, LCD_V_RES - 52, 3, 36, COL_ACCENT, LV_OPA_COVER);
+  make_bar(parent, LCD_H_RES - 52, LCD_V_RES - 19, 36, 3, COL_ACCENT, LV_OPA_COVER);
+  make_bar(parent, LCD_H_RES - 19, LCD_V_RES - 52, 3, 36, COL_ACCENT, LV_OPA_COVER);
+}
+
+// Cycle neon rim on the prize card
+const uint32_t AD_RIMS[] = {0x22D3EE, 0xA78BFA, 0x34D399, 0xF472B6, 0xFBBF24};
+const size_t AD_RIM_COUNT = sizeof(AD_RIMS) / sizeof(AD_RIMS[0]);
+
+// Absolute layout for 800×480
+constexpr int CARD_Y = 72;
+constexpr int CARD_H = 196;
+constexpr int WANT_Y = 288;
+constexpr int WANT_H = 68;
+constexpr int SCORE_Y = 378;
+constexpr int SCORE_H = 78;
 
 }  // namespace
 
@@ -63,58 +107,59 @@ void AppUi::begin(RewardState *state, MqttBridge *mqtt) {
 
 void AppUi::build() {
   screen_ = lv_obj_create(nullptr);
-  strip_chrome(screen_);
-  lv_obj_set_style_bg_color(screen_, c(COL_BG), 0);
-  lv_obj_set_style_bg_opa(screen_, LV_OPA_COVER, 0);
+  style_space_bg(screen_);
   lv_obj_clear_flag(screen_, LV_OBJ_FLAG_SCROLLABLE);
 
   // ========== AD MODE ==========
-  ad_layer_ = make_full_layer(screen_, COL_BG);
+  ad_layer_ = make_full_layer(screen_);
+  paint_hud_backdrop(ad_layer_);
 
-  lv_obj_t *sky = lv_obj_create(ad_layer_);
-  strip_chrome(sky);
-  lv_obj_set_size(sky, LCD_H_RES, SKY_H);
-  lv_obj_set_pos(sky, 0, 0);
-  lv_obj_set_style_bg_color(sky, c(COL_SKY), 0);
-  lv_obj_set_style_bg_opa(sky, LV_OPA_COVER, 0);
-  lv_obj_clear_flag(sky, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_t *brand = make_label(ad_layer_, "PRIZE STATION", &lv_font_montserrat_28, COL_ACCENT);
+  lv_obj_align(brand, LV_ALIGN_TOP_MID, 0, 22);
 
-  lv_obj_t *brand = make_label(ad_layer_, "Prize Shop!", &lv_font_montserrat_28, COL_TEXT);
-  lv_obj_align(brand, LV_ALIGN_TOP_MID, 0, 16);
+  lv_obj_t *tag = make_label(ad_layer_, "// LIVE REWARDS", &lv_font_montserrat_14, COL_MUTED);
+  lv_obj_align(tag, LV_ALIGN_TOP_RIGHT, -28, 28);
 
   prize_card_ = lv_obj_create(ad_layer_);
   lv_obj_set_size(prize_card_, 720, CARD_H);
   lv_obj_set_pos(prize_card_, (LCD_H_RES - 720) / 2, CARD_Y);
   lv_obj_set_style_bg_color(prize_card_, c(COL_CARD), 0);
-  lv_obj_set_style_border_width(prize_card_, 0, 0);
+  lv_obj_set_style_bg_opa(prize_card_, LV_OPA_COVER, 0);
+  lv_obj_set_style_border_width(prize_card_, 3, 0);
+  lv_obj_set_style_border_color(prize_card_, c(COL_ACCENT), 0);
   lv_obj_set_style_outline_width(prize_card_, 0, 0);
   lv_obj_set_style_shadow_width(prize_card_, 0, 0);
-  lv_obj_set_style_radius(prize_card_, 28, 0);
+  lv_obj_set_style_radius(prize_card_, 18, 0);
   lv_obj_set_style_pad_all(prize_card_, 16, 0);
   lv_obj_clear_flag(prize_card_, LV_OBJ_FLAG_SCROLLABLE);
+
+  // Inner top accent stripe on the card
+  lv_obj_t *card_stripe = make_bar(prize_card_, 0, 0, 720, 6, COL_ACCENT, LV_OPA_COVER);
+  lv_obj_set_style_radius(card_stripe, 0, 0);
 
   prize_name_ = make_label(prize_card_, "", &lv_font_montserrat_28, COL_TEXT);
   lv_label_set_long_mode(prize_name_, LV_LABEL_LONG_WRAP);
   lv_obj_set_width(prize_name_, 660);
   lv_obj_set_style_text_align(prize_name_, LV_TEXT_ALIGN_CENTER, 0);
-  lv_obj_align(prize_name_, LV_ALIGN_TOP_MID, 0, 28);
+  lv_obj_align(prize_name_, LV_ALIGN_TOP_MID, 0, 36);
 
-  prize_cost_ = make_label(prize_card_, "", &lv_font_montserrat_28, COL_ACCENT);
-  lv_obj_align(prize_cost_, LV_ALIGN_BOTTOM_MID, 0, -20);
+  prize_cost_ = make_label(prize_card_, "", &lv_font_montserrat_28, COL_COST);
+  lv_obj_align(prize_cost_, LV_ALIGN_BOTTOM_MID, 0, -22);
 
   want_btn_ = lv_btn_create(ad_layer_);
-  lv_obj_set_size(want_btn_, 360, WANT_H);
-  lv_obj_set_pos(want_btn_, (LCD_H_RES - 360) / 2, WANT_Y);
+  lv_obj_set_size(want_btn_, 380, WANT_H);
+  lv_obj_set_pos(want_btn_, (LCD_H_RES - 380) / 2, WANT_Y);
   lv_obj_set_style_bg_color(want_btn_, c(COL_ACCENT), 0);
-  lv_obj_set_style_bg_color(want_btn_, c(0xFB923C), LV_STATE_PRESSED);
-  lv_obj_set_style_radius(want_btn_, 35, 0);
+  lv_obj_set_style_bg_color(want_btn_, c(COL_ACCENT2), LV_STATE_PRESSED);
+  lv_obj_set_style_text_color(want_btn_, c(COL_BG), 0);
+  lv_obj_set_style_radius(want_btn_, 12, 0);
   lv_obj_set_style_shadow_width(want_btn_, 0, 0);
-  lv_obj_set_style_border_width(want_btn_, 0, 0);
+  lv_obj_set_style_border_width(want_btn_, 2, 0);
+  lv_obj_set_style_border_color(want_btn_, c(COL_ACCENT2), 0);
   lv_obj_add_event_cb(want_btn_, onWantClick, LV_EVENT_CLICKED, nullptr);
-  lv_obj_t *want_lbl = make_label(want_btn_, "I want this!", &lv_font_montserrat_28, 0xFFFFFF);
+  lv_obj_t *want_lbl = make_label(want_btn_, "I WANT THIS", &lv_font_montserrat_28, COL_BG);
   lv_obj_center(want_lbl);
 
-  // Score chips along the bottom — sized to fit five kids on 800px
   score_row_ = lv_obj_create(ad_layer_);
   strip_chrome(score_row_);
   lv_obj_set_size(score_row_, LCD_H_RES - 16, SCORE_H);
@@ -128,15 +173,16 @@ void AppUi::build() {
   const int chip_w = 148;
   for (size_t i = 0; i < KID_COUNT; ++i) {
     score_chips_[i] = lv_obj_create(score_row_);
-    lv_obj_set_size(score_chips_[i], chip_w, 56);
-    lv_obj_set_style_bg_color(score_chips_[i], c(KIDS[i].color), 0);
-    lv_obj_set_style_border_width(score_chips_[i], 0, 0);
+    lv_obj_set_size(score_chips_[i], chip_w, 60);
+    lv_obj_set_style_bg_color(score_chips_[i], c(0x0B1220), 0);
+    lv_obj_set_style_border_width(score_chips_[i], 2, 0);
+    lv_obj_set_style_border_color(score_chips_[i], c(KIDS[i].color), 0);
     lv_obj_set_style_outline_width(score_chips_[i], 0, 0);
     lv_obj_set_style_shadow_width(score_chips_[i], 0, 0);
-    lv_obj_set_style_radius(score_chips_[i], 28, 0);
+    lv_obj_set_style_radius(score_chips_[i], 10, 0);
     lv_obj_set_style_pad_all(score_chips_[i], 2, 0);
     lv_obj_clear_flag(score_chips_[i], LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_t *chip = make_label(score_chips_[i], "", &lv_font_montserrat_14, 0xFFFFFF);
+    lv_obj_t *chip = make_label(score_chips_[i], "", &lv_font_montserrat_14, COL_TEXT);
     lv_label_set_long_mode(chip, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(chip, chip_w - 8);
     lv_obj_set_style_text_align(chip, LV_TEXT_ALIGN_CENTER, 0);
@@ -145,10 +191,11 @@ void AppUi::build() {
   }
 
   // ========== PICKER ==========
-  picker_layer_ = make_full_layer(screen_, COL_BG);
+  picker_layer_ = make_full_layer(screen_);
+  paint_hud_backdrop(picker_layer_);
   lv_obj_add_flag(picker_layer_, LV_OBJ_FLAG_HIDDEN);
 
-  picker_title_ = make_label(picker_layer_, "Whose prize?", &lv_font_montserrat_28, COL_TEXT);
+  picker_title_ = make_label(picker_layer_, "SELECT OPERATOR", &lv_font_montserrat_28, COL_ACCENT);
   lv_obj_align(picker_title_, LV_ALIGN_TOP_MID, 0, 16);
 
   picker_sub_ = make_label(picker_layer_, "", &lv_font_montserrat_18, COL_MUTED);
@@ -167,12 +214,13 @@ void AppUi::build() {
     const int row = static_cast<int>(i) / cols;
     const int col = static_cast<int>(i) % cols;
     lv_obj_set_pos(kid_btns_[i], start_x + col * (btn_w + gap_x), start_y + row * (btn_h + gap_y));
-    lv_obj_set_style_bg_color(kid_btns_[i], c(KIDS[i].color), 0);
-    lv_obj_set_style_radius(kid_btns_[i], 24, 0);
+    lv_obj_set_style_bg_color(kid_btns_[i], c(0x0B1220), 0);
+    lv_obj_set_style_border_width(kid_btns_[i], 3, 0);
+    lv_obj_set_style_border_color(kid_btns_[i], c(KIDS[i].color), 0);
+    lv_obj_set_style_radius(kid_btns_[i], 12, 0);
     lv_obj_set_style_shadow_width(kid_btns_[i], 0, 0);
-    lv_obj_set_style_border_width(kid_btns_[i], 0, 0);
     lv_obj_add_event_cb(kid_btns_[i], onKidClick, LV_EVENT_CLICKED, reinterpret_cast<void *>(i));
-    kid_lbls_[i] = make_label(kid_btns_[i], KIDS[i].name, &lv_font_montserrat_20, 0xFFFFFF);
+    kid_lbls_[i] = make_label(kid_btns_[i], KIDS[i].name, &lv_font_montserrat_20, COL_TEXT);
     lv_obj_set_style_text_align(kid_lbls_[i], LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_center(kid_lbls_[i]);
   }
@@ -181,27 +229,28 @@ void AppUi::build() {
   lv_obj_set_size(cancel, 200, 56);
   lv_obj_set_pos(cancel, (LCD_H_RES - 200) / 2, LCD_V_RES - 72);
   lv_obj_set_style_bg_color(cancel, c(COL_BTN_BACK), 0);
-  lv_obj_set_style_radius(cancel, 28, 0);
+  lv_obj_set_style_radius(cancel, 10, 0);
   lv_obj_set_style_shadow_width(cancel, 0, 0);
-  lv_obj_set_style_border_width(cancel, 0, 0);
+  lv_obj_set_style_border_width(cancel, 2, 0);
+  lv_obj_set_style_border_color(cancel, c(COL_MUTED), 0);
   lv_obj_add_event_cb(cancel, onCancelClick, LV_EVENT_CLICKED, nullptr);
-  lv_obj_t *cl = make_label(cancel, "Go back", &lv_font_montserrat_18, COL_TEXT);
+  lv_obj_t *cl = make_label(cancel, "ABORT", &lv_font_montserrat_18, COL_TEXT);
   lv_obj_center(cl);
 
   // ========== SPLASH ==========
-  splash_layer_ = make_full_layer(screen_, COL_WIN);
+  splash_layer_ = make_full_layer(screen_);
   lv_obj_add_flag(splash_layer_, LV_OBJ_FLAG_HIDDEN);
 
-  splash_stars_ = make_label(splash_layer_, "* * * * *", &lv_font_montserrat_28, 0xFFFFFF);
+  splash_stars_ = make_label(splash_layer_, "* * * * *", &lv_font_montserrat_28, COL_ACCENT);
   lv_obj_align(splash_stars_, LV_ALIGN_TOP_MID, 0, 70);
 
-  splash_title_ = make_label(splash_layer_, "YOU WIN!", &lv_font_montserrat_28, 0xFFFFFF);
+  splash_title_ = make_label(splash_layer_, "YOU WIN!", &lv_font_montserrat_28, COL_TEXT);
   lv_obj_align(splash_title_, LV_ALIGN_CENTER, 0, -40);
 
-  splash_kid_ = make_label(splash_layer_, "", &lv_font_montserrat_28, COL_TEXT);
+  splash_kid_ = make_label(splash_layer_, "", &lv_font_montserrat_28, COL_ACCENT);
   lv_obj_align(splash_kid_, LV_ALIGN_CENTER, 0, 20);
 
-  splash_sub_ = make_label(splash_layer_, "", &lv_font_montserrat_20, COL_TEXT);
+  splash_sub_ = make_label(splash_layer_, "", &lv_font_montserrat_20, COL_MUTED);
   lv_obj_set_width(splash_sub_, LCD_H_RES - 80);
   lv_label_set_long_mode(splash_sub_, LV_LABEL_LONG_WRAP);
   lv_obj_set_style_text_align(splash_sub_, LV_TEXT_ALIGN_CENTER, 0);
@@ -228,8 +277,9 @@ void AppUi::setMode(Mode m) {
 }
 
 void AppUi::cycleAdBg() {
-  const uint32_t band = AD_BANDS[ad_index_ % AD_BAND_COUNT];
-  lv_obj_set_style_bg_color(prize_card_, c(band), 0);
+  const uint32_t rim = AD_RIMS[ad_index_ % AD_RIM_COUNT];
+  lv_obj_set_style_border_color(prize_card_, c(rim), 0);
+  lv_obj_set_style_bg_color(prize_card_, c(COL_CARD), 0);
 }
 
 void AppUi::refreshScores() {
@@ -281,7 +331,7 @@ void AppUi::refreshAd() {
   const PrizeDef &p = state_->prize(ad_index_);
   lv_label_set_text(prize_name_, p.name);
   char cost[48];
-  snprintf(cost, sizeof(cost), "%u points", p.cost);
+  snprintf(cost, sizeof(cost), "%u CREDITS", p.cost);
   lv_label_set_text(prize_cost_, cost);
   cycleAdBg();
 
@@ -309,12 +359,12 @@ void AppUi::showPicker(size_t prize_index) {
   if (prize_index < state_->prizeCount()) {
     const PrizeDef &p = state_->prize(prize_index);
     char sub[80];
-    snprintf(sub, sizeof(sub), "%s  ·  %u points", p.name, p.cost);
+    snprintf(sub, sizeof(sub), "%s  //  %u credits", p.name, p.cost);
     lv_label_set_text(picker_sub_, sub);
   } else {
     lv_label_set_text(picker_sub_, "");
   }
-  lv_label_set_text(picker_title_, "Tap your name!");
+  lv_label_set_text(picker_title_, "SELECT OPERATOR");
   refreshPickerButtons();
   setMode(Mode::Picker);
 }
@@ -326,20 +376,22 @@ void AppUi::showSplashFromState() {
   }
 
   uint32_t bg = COL_WIN;
-  const char *stars = "* * * YOU WIN! * * *";
+  const char *stars = "* * * JACKPOT * * *";
   if (s.kind == RewardState::SplashKind::Bonus) {
     bg = COL_BONUS;
-    stars = "* * * BONUS! * * *";
+    stars = "* * * BONUS DROP * * *";
   } else if (s.kind == RewardState::SplashKind::KeepGoing) {
     bg = COL_KEEP;
-    stars = "Almost there!";
+    stars = "SIGNAL WEAK — KEEP GOING";
   } else {
-    stars = "* * * * *";
+    stars = "* * * JACKPOT * * *";
   }
 
-  lv_obj_set_style_bg_color(splash_layer_, c(bg), 0);
+  // Keep splash readable: tinted space bg + accent title
+  lv_obj_set_style_bg_color(splash_layer_, c(COL_BG), 0);
+  lv_obj_set_style_bg_grad_color(splash_layer_, c(bg), 0);
+  lv_obj_set_style_bg_grad_dir(splash_layer_, LV_GRAD_DIR_VER, 0);
   lv_label_set_text(splash_stars_, stars);
-  // Friendlier titles on glass
   if (s.kind == RewardState::SplashKind::Winner) {
     lv_label_set_text(splash_title_, "YOU WIN!");
   } else if (s.kind == RewardState::SplashKind::Bonus) {
