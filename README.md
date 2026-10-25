@@ -78,6 +78,7 @@ On boot the panel prints `[boot] reset reason: ...` (e.g. `PANIC`, `interrupt wa
 |-------|---------|--------|
 | `kids/{slug}/job/{job_id}/state` | `done` / `todo` | retained — per job |
 | `kids/{slug}/internet` | `on` / `off` | retained — **MikroTik unlock** for that kid only |
+| `kids/common/internet` | `on` / `off` | retained — MikroTik profile **common**: on if **Xavier or Presley** is unlocked |
 | `kids/{slug}/progress` | JSON | retained |
 | `kids/{slug}/rewards/tally` | integer | retained — help credits |
 | `kids/rewards/event` | JSON | not retained — `{doer, owner, job, …}` |

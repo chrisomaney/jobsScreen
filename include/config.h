@@ -109,6 +109,8 @@ static const int DAILY_RESET_MINUTE = 0;
 //
 //   kids/{slug}/job/{job_id}/state     payload: "done" | "todo"
 //   kids/{slug}/internet               payload: "on" | "off"  (own list complete)
+//   kids/common/internet               payload: "on" | "off"  (Xavier OR Presley ready
+//                                      → MikroTik Kid Control profile "common")
 //   kids/{slug}/progress               payload: JSON {"done":n,"total":m,"pct":p}
 //   kids/{slug}/rewards/tally          payload: integer count (help credits)
 //   kids/rewards/event                 payload: JSON doer/owner/job (not retained)
@@ -128,7 +130,12 @@ static const int DAILY_RESET_MINUTE = 0;
 // ---------------------------------------------------------------------------
 static const char *MQTT_BASE = "kids";
 static const char *MQTT_STATUS_TOPIC = "kids/panel/status";
+static const char *MQTT_COMMON_INTERNET = "kids/common/internet";
 static const char *MQTT_REWARDS_EVENT = "kids/rewards/event";
+// Shared devices profile: unlocked when Xavier or Presley finishes their own jobs.
+static const size_t COMMON_UNLOCK_KIDS[] = {0, 1};  // xavier, presley
+static const size_t COMMON_UNLOCK_KID_COUNT =
+    sizeof(COMMON_UNLOCK_KIDS) / sizeof(COMMON_UNLOCK_KIDS[0]);
 static const char *MQTT_CATALOG_TOPIC = "kids/rewards/catalog";
 static const char *MQTT_CATALOG_SET = "kids/rewards/catalog/set";
 static const char *MQTT_CLAIM_TOPIC = "kids/rewards/claim";

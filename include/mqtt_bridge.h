@@ -10,6 +10,7 @@ public:
   void loop();
   void publishJob(size_t kid, size_t job);
   void publishKidSummary(size_t kid);
+  void publishCommonInternet();
   void publishRewardTally(size_t kid);
   void publishRewardEvent(size_t doer, size_t owner, size_t job);
   void publishCatalog();
