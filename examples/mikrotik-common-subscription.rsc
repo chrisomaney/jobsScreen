@@ -5,6 +5,11 @@
 #
 # Profile name must be exactly: common  (lowercase)
 # Paste from Terminal root (/). Broker ha-mosquitto must already exist.
+#
+# Raise parallel script limit — retained kids/*/internet all fire on reconnect;
+# default/low limits (e.g. 3) cause: "Ignoring script execution... Too many
+# broker scripts already running (3/3)".
+/iot mqtt brokers set [find where name="ha-mosquitto"] parallel-scripts-limit=20
 
 /iot mqtt subscriptions
 :foreach i in=[find where broker="ha-mosquitto" and topic="kids/common/internet"] do={
