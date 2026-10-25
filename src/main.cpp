@@ -83,11 +83,19 @@ void maintainDailyReset() {
 
 void setup() {
   Serial.begin(115200);
-  delay(200);
+  // USB-CDC on ESP32-S3 often drops the first lines unless we wait briefly.
+  const uint32_t serial_wait_start = millis();
+  while (!Serial && millis() - serial_wait_start < 2500) {
+    delay(10);
+  }
+  delay(100);
   Serial.println();
   Serial.println("=== Kids Jobs Sign-off ===");
   Serial.printf("[boot] reset reason: %s\n", resetReasonText(esp_reset_reason()));
-  Serial.printf("[boot] psram %u bytes\n", static_cast<unsigned>(ESP.getPsramSize()));
+  Serial.printf("[boot] free heap=%u  psram=%u / %u\n",
+                static_cast<unsigned>(ESP.getFreeHeap()),
+                static_cast<unsigned>(ESP.getFreePsram()),
+                static_cast<unsigned>(ESP.getPsramSize()));
 
   g_state.begin();
 

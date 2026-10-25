@@ -4,6 +4,11 @@
 .vscode/launch.json
 .vscode/ipch
 include/secrets.h
+<<<<<<< HEAD
+data/idle.rgb565
+=======
 rewards-panel/include/secrets.h
+>>>>>>> origin/main
 *.pyc
 .DS_Store
+

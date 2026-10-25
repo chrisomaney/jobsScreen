@@ -22,10 +22,15 @@ Firmware for the **Waveshare ESP32-S3-Touch-LCD-7** (800×480). Five kids — **
 Until you add a photo, a soft generated backdrop is used. To use your own:
 
 ```bash
-pip install pillow
-python3 tools/make_idle_photo.py /path/to/family.jpg   # writes data/idle.rgb565 (800×480)
-pio run -t uploadfs                                     # upload LittleFS
-pio run -t upload                                       # firmware if needed
+python -m pip install pillow
+
+# Windows — use a normal drive path (not /c:/...):
+python tools/make_idle_photo.py C:\1\photo.jpg
+# or:
+python tools/make_idle_photo.py "C:/1/photo.jpg"
+
+pio run -t uploadfs    # uploads data/idle.rgb565 to the panel
+pio run -t upload      # firmware if needed
 ```
 
 Idle timeout and look: `IDLE_TIMEOUT_MS` and `IDLE_PHOTO_BRIGHTNESS_PCT` in `include/config.h`.
@@ -69,9 +74,11 @@ pio run -t upload
 pio device monitor
 ```
 
+**Windows tips:** Prefer a short project path (e.g. `C:\js`) — LVGL’s deep `../` includes can hit MAX_PATH under long `Downloads\…` folders. Create secrets with `copy include\secrets.example.h include\secrets.h`.
+
 If you see `fatal error: Network.h: No such file or directory`, pull the latest `main` (the include paths in `platformio.ini` are now relative, so project folders with spaces or Windows paths work), then run `pio run -t clean` and build again.
 
-If you see `lv_conf.h: No such file` on Windows, pull the latest from this branch (LV_CONF_PATH was removed — it breaks on Windows paths) and run `pio run -t clean` then `pio run`.
+If you see `lv_conf.h: No such file` on Windows, pull latest (LV_CONF_PATH was removed — it breaks on Windows paths) and run `pio run -t clean` then `pio run`.
 
 `lib/Network` is a vendored copy of the Arduino-ESP32 3.0.7 Network library (link helper for `WiFi` → `Network.h`). If it’s ever missing:
 

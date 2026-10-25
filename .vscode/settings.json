@@ -1,0 +1,4 @@
+{
+  "platformio-ide.defaultToolbarEnv": "waveshare-esp32s3-touch-lcd-7",
+  "platformio-ide.activateProjectOnTextEditorChange": true
+}
