@@ -12,6 +12,11 @@ public:
   void publishKidSummary(size_t kid);
   void publishRewardTally(size_t kid);
   void publishRewardEvent(size_t doer, size_t owner, size_t job);
+  void publishCatalog();
+  void publishClaim(size_t kid, size_t prize_index, uint32_t before, uint32_t after);
+  void publishBonus(size_t kid, uint32_t points, uint32_t before, uint32_t after);
+  void publishCelebrateWinner(size_t kid, size_t prize_index, uint32_t after);
+  void publishCelebrateBonus(size_t kid, uint32_t points, uint32_t after);
   void publishAll();
   void publishConfig();
   bool connected() { return client_.connected(); }

@@ -49,7 +49,27 @@ public:
 
   uint32_t rewardTally(size_t kid) const;
   void addReward(size_t doer);
+  void setRewardTally(size_t kid, uint32_t value);
+  void addBonus(size_t kid, uint32_t points);
   void resetRewards();
+
+  // Prize shop (idle screen) — catalog in NVS "prizes"; tallies share rewards_[]
+  size_t prizeCount() const { return prize_count_; }
+  const PrizeDef &prize(size_t i) const { return prizes_[i]; }
+  bool setCatalogFromJson(const char *json);
+  String catalogToJson() const;
+  bool tryClaimPrize(size_t kid, size_t prize_index, uint32_t *tally_before, uint32_t *tally_after);
+
+  enum class SplashKind : uint8_t { None = 0, Winner, Bonus, KeepGoing };
+  struct Splash {
+    SplashKind kind = SplashKind::None;
+    size_t kid = 0;
+    char title[40]{};
+    char subtitle[64]{};
+  };
+  const Splash &pendingSplash() const { return splash_; }
+  void clearSplash() { splash_.kind = SplashKind::None; }
+  void queueSplash(SplashKind kind, size_t kid, const char *title, const char *subtitle);
 
   // Daily rollover. Returns true if the day changed and all jobs were reset.
   // The first call after flashing just records the day (no reset).
@@ -62,6 +82,10 @@ private:
   uint32_t rewards_[KID_COUNT]{};
   uint32_t job_day_ = 0;
   Preferences prefs_;
+  Preferences prize_prefs_;
+  PrizeDef prizes_[PRIZE_MAX]{};
+  size_t prize_count_ = 0;
+  Splash splash_{};
   uint32_t revision_ = 1;
   uint32_t config_revision_ = 1;
   void persistConfig();
@@ -71,6 +95,9 @@ private:
   void loadKid(size_t kid);
   void persistReward(size_t kid);
   void loadRewards();
+  void loadPrizeDefaults();
+  void loadPrizeCatalog();
+  void savePrizeCatalog();
   static String key(size_t kid);
   bool clearCustomJob(size_t job);
   int allocCustomSlot();

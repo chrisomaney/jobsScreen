@@ -78,6 +78,11 @@ void MqttBridge::ensureConnected() {
   for (const String &t : cmds) {
     client_.subscribe(t.c_str());
   }
+  client_.subscribe(MQTT_CATALOG_SET);
+  client_.subscribe(MQTT_BONUS_SET);
+  for (size_t k = 0; k < KID_COUNT; ++k) {
+    client_.subscribe(topicRewardTally(k).c_str());
+  }
   publishAll();
   Serial.println("[mqtt] connected");
 }
@@ -109,6 +114,66 @@ void MqttBridge::handleMessage(char *topic, byte *payload, unsigned int length) 
       publishRewardTally(k);
     }
     return;
+  }
+
+  if (t == MQTT_CATALOG_SET) {
+    String body;
+    body.reserve(length + 1);
+    for (unsigned int i = 0; i < length; ++i) {
+      body += static_cast<char>(payload[i]);
+    }
+    if (state_->setCatalogFromJson(body.c_str())) {
+      publishCatalog();
+      Serial.println("[mqtt] prize catalog updated");
+    }
+    return;
+  }
+
+  if (t == MQTT_BONUS_SET) {
+    String body;
+    body.reserve(length + 1);
+    for (unsigned int i = 0; i < length; ++i) {
+      body += static_cast<char>(payload[i]);
+    }
+    JsonDocument doc;
+    if (deserializeJson(doc, body)) {
+      return;
+    }
+    const char *slug = doc["kid"] | "";
+    const uint32_t points = doc["points"] | 0;
+    size_t kid = KID_COUNT;
+    for (size_t i = 0; i < KID_COUNT; ++i) {
+      if (strcmp(KIDS[i].slug, slug) == 0) {
+        kid = i;
+        break;
+      }
+    }
+    if (kid >= KID_COUNT || points == 0) {
+      return;
+    }
+    const uint32_t before = state_->rewardTally(kid);
+    state_->addBonus(kid, points);
+    const uint32_t after = state_->rewardTally(kid);
+    publishRewardTally(kid);
+    publishBonus(kid, points, before, after);
+    publishCelebrateBonus(kid, points, after);
+    return;
+  }
+
+  for (size_t k = 0; k < KID_COUNT; ++k) {
+    if (t == topicRewardTally(k)) {
+      String body;
+      body.reserve(length + 1);
+      for (unsigned int i = 0; i < length; ++i) {
+        body += static_cast<char>(payload[i]);
+      }
+      const uint32_t v = static_cast<uint32_t>(body.toInt());
+      if (state_->rewardTally(k) != v) {
+        state_->setRewardTally(k, v);
+        Serial.printf("[mqtt] tally %s = %lu\n", KIDS[k].slug, static_cast<unsigned long>(v));
+      }
+      return;
+    }
   }
 
   for (size_t k = 0; k < KID_COUNT; ++k) {
@@ -194,8 +259,85 @@ void MqttBridge::publishConfig() {
   client_.publish(MQTT_CONFIG_STATE, json.c_str(), true);
 }
 
+void MqttBridge::publishCatalog() {
+  if (!client_.connected()) {
+    return;
+  }
+  const String json = state_->catalogToJson();
+  client_.publish(MQTT_CATALOG_TOPIC, json.c_str(), true);
+}
+
+void MqttBridge::publishClaim(size_t kid, size_t prize_index, uint32_t before, uint32_t after) {
+  if (!client_.connected() || prize_index >= state_->prizeCount()) {
+    return;
+  }
+  JsonDocument doc;
+  doc["kid"] = KIDS[kid].slug;
+  doc["prize_id"] = state_->prize(prize_index).id;
+  doc["prize_name"] = state_->prize(prize_index).name;
+  doc["cost"] = state_->prize(prize_index).cost;
+  doc["tally_before"] = before;
+  doc["tally_after"] = after;
+  doc["ts"] = millis();
+  String json;
+  serializeJson(doc, json);
+  client_.publish(MQTT_CLAIM_TOPIC, json.c_str(), false);
+}
+
+void MqttBridge::publishBonus(size_t kid, uint32_t points, uint32_t before, uint32_t after) {
+  if (!client_.connected()) {
+    return;
+  }
+  JsonDocument doc;
+  doc["kid"] = KIDS[kid].slug;
+  doc["points"] = points;
+  doc["tally_before"] = before;
+  doc["tally_after"] = after;
+  doc["ts"] = millis();
+  String json;
+  serializeJson(doc, json);
+  client_.publish(MQTT_BONUS_TOPIC, json.c_str(), false);
+}
+
+void MqttBridge::publishCelebrateWinner(size_t kid, size_t prize_index, uint32_t after) {
+  if (!client_.connected() || prize_index >= state_->prizeCount()) {
+    return;
+  }
+  JsonDocument doc;
+  doc["type"] = "winner";
+  doc["kid"] = KIDS[kid].slug;
+  doc["title"] = "WINNER!";
+  doc["subtitle"] = state_->prize(prize_index).name;
+  doc["prize_name"] = state_->prize(prize_index).name;
+  doc["tally_after"] = after;
+  doc["ts"] = millis();
+  String json;
+  serializeJson(doc, json);
+  client_.publish(MQTT_CELEBRATE_TOPIC, json.c_str(), false);
+}
+
+void MqttBridge::publishCelebrateBonus(size_t kid, uint32_t points, uint32_t after) {
+  if (!client_.connected()) {
+    return;
+  }
+  JsonDocument doc;
+  doc["type"] = "bonus";
+  doc["kid"] = KIDS[kid].slug;
+  doc["title"] = "BONUS!";
+  char sub[48];
+  snprintf(sub, sizeof(sub), "+%lu points", static_cast<unsigned long>(points));
+  doc["subtitle"] = sub;
+  doc["points"] = points;
+  doc["tally_after"] = after;
+  doc["ts"] = millis();
+  String json;
+  serializeJson(doc, json);
+  client_.publish(MQTT_CELEBRATE_TOPIC, json.c_str(), false);
+}
+
 void MqttBridge::publishAll() {
   publishConfig();
+  publishCatalog();
   for (size_t k = 0; k < KID_COUNT; ++k) {
     for (size_t j = 0; j < JOB_COUNT; ++j) {
       publishJob(k, j);
