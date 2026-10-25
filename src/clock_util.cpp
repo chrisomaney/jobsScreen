@@ -66,3 +66,20 @@ uint32_t clock_job_day() {
   localtime_r(&shifted, &local);
   return static_cast<uint32_t>((local.tm_year + 1900) * 10000 + (local.tm_mon + 1) * 100 + local.tm_mday);
 }
+
+bool clock_local_parts(int *hour, int *minute, int *wday) {
+  struct tm local {};
+  if (!local_now(&local)) {
+    return false;
+  }
+  if (hour) {
+    *hour = local.tm_hour;
+  }
+  if (minute) {
+    *minute = local.tm_min;
+  }
+  if (wday) {
+    *wday = local.tm_wday;
+  }
+  return true;
+}

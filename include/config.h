@@ -135,6 +135,10 @@ static const char *MQTT_CLAIM_TOPIC = "kids/rewards/claim";
 static const char *MQTT_BONUS_TOPIC = "kids/rewards/bonus";
 static const char *MQTT_BONUS_SET = "kids/rewards/bonus/set";
 static const char *MQTT_CELEBRATE_TOPIC = "kids/rewards/celebrate";
+static const char *MQTT_RULES_STATE = "kids/rewards/rules/state";
+static const char *MQTT_RULES_SET = "kids/rewards/rules/set";
+static const char *MQTT_PANEL_MESSAGE_SET = "kids/panel/message/set";
+static const size_t REWARD_RULE_MAX = 16;
 // Web app job chooser (see webapp/):
 //   kids/config/state  retained JSON — kids, jobs, who has each job, required flags,
 //                      customSlotsFree, and custom:true on Jobs Chooser–created items

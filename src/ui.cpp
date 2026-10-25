@@ -109,17 +109,20 @@ void unpackOwnerJob(void *p, size_t *owner, size_t *job) {
 
 }  // namespace
 
-void AppUi::begin(JobState *state, MqttBridge *mqtt) {
+void AppUi::begin(JobState *state, MqttBridge *mqtt, RewardEngine *rewards) {
   self_ = this;
   state_ = state;
   mqtt_ = mqtt;
+  rewards_ = rewards;
   seen_revision_ = state_->revision();
   seen_config_revision_ = state_->configRevision();
+  seen_rewards_revision_ = rewards_ ? rewards_->revision() : 0;
   buildIdle();
   buildHome();
   buildKidScaffold();
   buildNotDoneScaffold();
   buildDoerPicker();
+  buildMessageOverlay();
   last_carousel_ms_ = millis();
   showIdle();
 }
@@ -310,6 +313,50 @@ void AppUi::buildIdle() {
   lv_label_set_long_mode(splash_sub_, LV_LABEL_LONG_WRAP);
   lv_obj_set_style_text_align(splash_sub_, LV_TEXT_ALIGN_CENTER, 0);
   lv_obj_align(splash_sub_, LV_ALIGN_CENTER, 0, 80);
+}
+
+void AppUi::buildMessageOverlay() {
+  // Top layer so parent messages appear over prize or jobs screens.
+  msg_layer_ = lv_obj_create(lv_layer_top());
+  strip_chrome(msg_layer_);
+  lv_obj_set_size(msg_layer_, LCD_H_RES, LCD_V_RES);
+  lv_obj_set_pos(msg_layer_, 0, 0);
+  lv_obj_set_style_bg_color(msg_layer_, c(0x0B1220), 0);
+  lv_obj_set_style_bg_opa(msg_layer_, LV_OPA_80, 0);
+  lv_obj_add_flag(msg_layer_, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_clear_flag(msg_layer_, LV_OBJ_FLAG_SCROLLABLE);
+
+  lv_obj_t *card = lv_obj_create(msg_layer_);
+  lv_obj_set_size(card, 640, 260);
+  lv_obj_center(card);
+  lv_obj_set_style_bg_color(card, c(COL_PRIZE_CARD), 0);
+  lv_obj_set_style_border_width(card, 3, 0);
+  lv_obj_set_style_border_color(card, c(COL_PRIZE_ACCENT), 0);
+  lv_obj_set_style_radius(card, 18, 0);
+  lv_obj_set_style_pad_all(card, 20, 0);
+  lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
+
+  msg_title_ = make_label(card, "", &lv_font_montserrat_28, COL_PRIZE_ACCENT);
+  lv_obj_align(msg_title_, LV_ALIGN_TOP_MID, 0, 8);
+  msg_body_ = make_label(card, "", &lv_font_montserrat_20, COL_TEXT);
+  lv_obj_set_width(msg_body_, 580);
+  lv_label_set_long_mode(msg_body_, LV_LABEL_LONG_WRAP);
+  lv_obj_set_style_text_align(msg_body_, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_align(msg_body_, LV_ALIGN_CENTER, 0, 20);
+}
+
+void AppUi::refreshMessageOverlay() {
+  if (!rewards_ || !msg_layer_) {
+    return;
+  }
+  const auto &m = rewards_->panelMessage();
+  if (!m.active) {
+    lv_obj_add_flag(msg_layer_, LV_OBJ_FLAG_HIDDEN);
+    return;
+  }
+  lv_label_set_text(msg_title_, m.title);
+  lv_label_set_text(msg_body_, m.text);
+  lv_obj_clear_flag(msg_layer_, LV_OBJ_FLAG_HIDDEN);
 }
 
 void AppUi::buildHome() {
@@ -1018,6 +1065,11 @@ void AppUi::tick() {
   // LVGL tracks time since the last touch, so no extra GT911 reads needed
   if (isActiveSession() && display_board_inactive_ms() >= IDLE_TIMEOUT_MS) {
     showIdle();
+  }
+
+  if (rewards_ && rewards_->revision() != seen_rewards_revision_) {
+    seen_rewards_revision_ = rewards_->revision();
+    refreshMessageOverlay();
   }
 
   if (screen_kind_ == ScreenKind::Idle) {

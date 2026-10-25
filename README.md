@@ -17,7 +17,7 @@ Kids: **Xavier, Presley, Jax, Banx, Hazel**. Phone admin: Jobs Chooser + [reward
 | **Jobs left to do** | Opens **7:40am**. Outstanding items by kid. Done → **Who did this?** name picker |
 | **Who did this?** | Credits the helper for Rewards; marks the job done on the **owner’s** list. The owner isn’t offered (no self-credit) |
 
-Idle timeout: `IDLE_TIMEOUT_MS` in `include/config.h`. Prizes are edited from `webapp/rewards-admin.html` (same Mosquitto login).
+Idle timeout: `IDLE_TIMEOUT_MS` in `include/config.h`. **Rewards HQ** (`webapp/rewards-admin.html`): prizes, bonus points, points-per-job, scheduled award rules (flat / sum finished jobs / one job), and messages on the glass — same Mosquitto login as Jobs Chooser.
 
 ### Unlock & rewards rules
 
