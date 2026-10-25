@@ -1,6 +1,7 @@
 #include "job_state.h"
 
 #include <ArduinoJson.h>
+#include <cstring>
 
 namespace {
 uint8_t g_mask[JOB_COUNT];
@@ -257,6 +258,12 @@ void JobState::begin() {
     loadKid(k);
   }
   loadRewards();
+  prize_prefs_.begin("prizes", false);
+  loadPrizeCatalog();
+  if (prize_count_ == 0) {
+    loadPrizeDefaults();
+    savePrizeCatalog();
+  }
   job_day_ = prefs_.getUInt("day", 0);
 }
 
@@ -604,10 +611,161 @@ void JobState::addReward(size_t doer) {
   bump();
 }
 
+void JobState::setRewardTally(size_t kid, uint32_t value) {
+  if (kid >= KID_COUNT) {
+    return;
+  }
+  if (rewards_[kid] == value) {
+    return;
+  }
+  rewards_[kid] = value;
+  persistReward(kid);
+  bump();
+}
+
+void JobState::addBonus(size_t kid, uint32_t points) {
+  if (kid >= KID_COUNT || points == 0) {
+    return;
+  }
+  rewards_[kid] += points;
+  persistReward(kid);
+  char sub[64];
+  snprintf(sub, sizeof(sub), "+%lu points!  Now you have %lu",
+           static_cast<unsigned long>(points),
+           static_cast<unsigned long>(rewards_[kid]));
+  queueSplash(SplashKind::Bonus, kid, "BONUS POINTS!", sub);
+}
+
 void JobState::resetRewards() {
   for (size_t k = 0; k < KID_COUNT; ++k) {
     rewards_[k] = 0;
     persistReward(k);
   }
   bump();
+}
+
+void JobState::loadPrizeDefaults() {
+  prize_count_ = 3;
+  memset(prizes_, 0, sizeof(prizes_));
+  strncpy(prizes_[0].id, "ice_cream", sizeof(prizes_[0].id) - 1);
+  strncpy(prizes_[0].name, "Ice cream night", sizeof(prizes_[0].name) - 1);
+  prizes_[0].cost = 5;
+  strncpy(prizes_[1].id, "movie", sizeof(prizes_[1].id) - 1);
+  strncpy(prizes_[1].name, "Pick the movie", sizeof(prizes_[1].name) - 1);
+  prizes_[1].cost = 8;
+  strncpy(prizes_[2].id, "lego", sizeof(prizes_[2].id) - 1);
+  strncpy(prizes_[2].name, "Small Lego set", sizeof(prizes_[2].name) - 1);
+  prizes_[2].cost = 20;
+}
+
+void JobState::loadPrizeCatalog() {
+  prize_count_ = prize_prefs_.getUChar("pc", 0);
+  if (prize_count_ > PRIZE_MAX) {
+    prize_count_ = 0;
+  }
+  memset(prizes_, 0, sizeof(prizes_));
+  for (size_t i = 0; i < prize_count_; ++i) {
+    String id = prize_prefs_.getString((String("pid") + i).c_str(), "");
+    String name = prize_prefs_.getString((String("pn") + i).c_str(), "");
+    prizes_[i].cost = prize_prefs_.getUShort((String("pcost") + i).c_str(), 1);
+    strncpy(prizes_[i].id, id.c_str(), sizeof(prizes_[i].id) - 1);
+    strncpy(prizes_[i].name, name.c_str(), sizeof(prizes_[i].name) - 1);
+  }
+}
+
+void JobState::savePrizeCatalog() {
+  prize_prefs_.putUChar("pc", static_cast<uint8_t>(prize_count_));
+  for (size_t i = 0; i < prize_count_; ++i) {
+    prize_prefs_.putString((String("pid") + i).c_str(), prizes_[i].id);
+    prize_prefs_.putString((String("pn") + i).c_str(), prizes_[i].name);
+    prize_prefs_.putUShort((String("pcost") + i).c_str(), prizes_[i].cost);
+  }
+  bump();
+}
+
+void JobState::queueSplash(SplashKind kind, size_t kid, const char *title, const char *subtitle) {
+  splash_.kind = kind;
+  splash_.kid = kid;
+  strncpy(splash_.title, title ? title : "", sizeof(splash_.title) - 1);
+  splash_.title[sizeof(splash_.title) - 1] = '\0';
+  strncpy(splash_.subtitle, subtitle ? subtitle : "", sizeof(splash_.subtitle) - 1);
+  splash_.subtitle[sizeof(splash_.subtitle) - 1] = '\0';
+  bump();
+}
+
+bool JobState::tryClaimPrize(size_t kid, size_t prize_index, uint32_t *tally_before,
+                             uint32_t *tally_after) {
+  if (kid >= KID_COUNT || prize_index >= prize_count_) {
+    return false;
+  }
+  const uint32_t cost = prizes_[prize_index].cost;
+  const uint32_t before = rewards_[kid];
+  if (before < cost) {
+    char sub[64];
+    snprintf(sub, sizeof(sub), "You need %lu more points",
+             static_cast<unsigned long>(cost - before));
+    queueSplash(SplashKind::KeepGoing, kid, "Keep earning!", sub);
+    return false;
+  }
+  rewards_[kid] = before - cost;
+  persistReward(kid);
+  if (tally_before) {
+    *tally_before = before;
+  }
+  if (tally_after) {
+    *tally_after = rewards_[kid];
+  }
+  char sub[64];
+  snprintf(sub, sizeof(sub), "You got: %s", prizes_[prize_index].name);
+  queueSplash(SplashKind::Winner, kid, "YOU WIN!", sub);
+  return true;
+}
+
+bool JobState::setCatalogFromJson(const char *json) {
+  JsonDocument doc;
+  if (deserializeJson(doc, json)) {
+    return false;
+  }
+  if (!doc.is<JsonArray>()) {
+    return false;
+  }
+  JsonArray arr = doc.as<JsonArray>();
+  size_t n = 0;
+  PrizeDef next[PRIZE_MAX]{};
+  for (JsonObject o : arr) {
+    if (n >= PRIZE_MAX) {
+      break;
+    }
+    const char *id = o["id"] | "";
+    const char *name = o["name"] | "";
+    uint16_t cost = o["cost"] | 1;
+    if (!id[0] || !name[0] || cost == 0) {
+      continue;
+    }
+    strncpy(next[n].id, id, sizeof(next[n].id) - 1);
+    strncpy(next[n].name, name, sizeof(next[n].name) - 1);
+    next[n].cost = cost;
+    ++n;
+  }
+  if (n == 0) {
+    return false;
+  }
+  memcpy(prizes_, next, sizeof(prizes_));
+  prize_count_ = n;
+  savePrizeCatalog();
+  return true;
+}
+
+String JobState::catalogToJson() const {
+  JsonDocument doc;
+  JsonArray arr = doc.to<JsonArray>();
+  for (size_t i = 0; i < prize_count_; ++i) {
+    JsonObject o = arr.add<JsonObject>();
+    o["id"] = prizes_[i].id;
+    o["name"] = prizes_[i].name;
+    o["cost"] = prizes_[i].cost;
+  }
+  String out;
+  serializeJson(doc, out);
+  return out;
 }

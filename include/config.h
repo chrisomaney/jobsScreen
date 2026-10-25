@@ -9,15 +9,23 @@
 struct KidProfile {
   const char *name;   // shown on screen
   const char *slug;   // MQTT path segment
+  uint32_t color;     // prize chips / picker rim
 };
 
 static const KidProfile KIDS[] = {
-  {"Xavier",  "xavier"},
-  {"Presley", "presley"},
-  {"Jax",     "jax"},
-  {"Banx",    "banx"},
-  {"Hazel",   "hazel"},
+  {"Xavier",  "xavier",  0x3B82F6},
+  {"Presley", "presley", 0xEC4899},
+  {"Jax",     "jax",     0xF59E0B},
+  {"Banx",    "banx",    0x22C55E},
+  {"Hazel",   "hazel",   0xA855F7},
 };
+
+struct PrizeDef {
+  char id[24];
+  char name[48];
+  uint16_t cost;
+};
+static const size_t PRIZE_MAX = 16;
 static const size_t KID_COUNT = sizeof(KIDS) / sizeof(KIDS[0]);
 static_assert(KID_COUNT <= 8, "kid masks are 8-bit");
 
@@ -104,6 +112,11 @@ static const int DAILY_RESET_MINUTE = 0;
 //   kids/{slug}/progress               payload: JSON {"done":n,"total":m,"pct":p}
 //   kids/{slug}/rewards/tally          payload: integer count (help credits)
 //   kids/rewards/event                 payload: JSON doer/owner/job (not retained)
+//   kids/rewards/catalog               retained prize list JSON
+//   kids/rewards/catalog/set           admin → update prizes
+//   kids/rewards/bonus/set             admin → {kid, points}
+//   kids/rewards/claim                 claim event (not retained)
+//   kids/rewards/celebrate             phone/TV splash JSON
 //   kids/panel/status                  payload: "online" / "offline" (LWT)
 //
 // Admin commands (subscribe):
@@ -116,6 +129,12 @@ static const int DAILY_RESET_MINUTE = 0;
 static const char *MQTT_BASE = "kids";
 static const char *MQTT_STATUS_TOPIC = "kids/panel/status";
 static const char *MQTT_REWARDS_EVENT = "kids/rewards/event";
+static const char *MQTT_CATALOG_TOPIC = "kids/rewards/catalog";
+static const char *MQTT_CATALOG_SET = "kids/rewards/catalog/set";
+static const char *MQTT_CLAIM_TOPIC = "kids/rewards/claim";
+static const char *MQTT_BONUS_TOPIC = "kids/rewards/bonus";
+static const char *MQTT_BONUS_SET = "kids/rewards/bonus/set";
+static const char *MQTT_CELEBRATE_TOPIC = "kids/rewards/celebrate";
 // Web app job chooser (see webapp/):
 //   kids/config/state  retained JSON — kids, jobs, who has each job, required flags,
 //                      customSlotsFree, and custom:true on Jobs Chooser–created items
@@ -126,7 +145,7 @@ static const char *MQTT_REWARDS_EVENT = "kids/rewards/event";
 static const char *MQTT_CONFIG_STATE = "kids/config/state";
 static const char *MQTT_CONFIG_SET = "kids/config/set";
 
-// UI colours (RGB565-friendly hex for LVGL)
+// UI colours (RGB565-friendly hex for LVGL) — jobs screens
 static const uint32_t COL_BG         = 0x1A2332;
 static const uint32_t COL_CARD       = 0x243447;
 static const uint32_t COL_EXPECT     = 0x3B82F6;  // blue — Expectations
@@ -137,16 +156,31 @@ static const uint32_t COL_MUTED      = 0x94A3B8;
 static const uint32_t COL_BTN        = 0x334155;
 static const uint32_t COL_BTN_ACTIVE = 0x16A34A;
 
+// Prize idle / neon station palette
+static const uint32_t COL_PRIZE_BG = 0x070B16;
+static const uint32_t COL_PRIZE_BG2 = 0x101A2E;
+static const uint32_t COL_PRIZE_SKY = 0x0E1A33;
+static const uint32_t COL_PRIZE_CARD = 0x121C33;
+static const uint32_t COL_PRIZE_ACCENT = 0x22D3EE;
+static const uint32_t COL_PRIZE_ACCENT2 = 0x67E8F9;
+static const uint32_t COL_PRIZE_COST = 0xFDE047;
+static const uint32_t COL_PRIZE_WIN = 0x10B981;
+static const uint32_t COL_PRIZE_BONUS = 0xF43F5E;
+static const uint32_t COL_PRIZE_KEEP = 0x3B82F6;
+static const uint32_t COL_PRIZE_LINE = 0x1E3A5F;
+static const uint32_t COL_PRIZE_BTN_BACK = 0x1E293B;
+
 // How often to re-publish retained state (ms) — keeps HA fresh after broker restart
 static const uint32_t MQTT_REPUBLISH_MS = 60000;
 
 // Touch debounce for Done buttons (ms, per button)
 static const uint32_t DONE_DEBOUNCE_MS = 400;
+static const uint32_t CLAIM_DEBOUNCE_MS = 600;
 
-// Photo / idle screen — always on; return here after inactivity
+// Idle = prize station; return here after jobs inactivity
 static const uint32_t IDLE_TIMEOUT_MS = 3UL * 60UL * 1000UL;  // 3 minutes
+static const uint32_t CAROUSEL_MS = 5000;
+static const uint32_t SPLASH_MS = 7500;
 
-// The Waveshare 7" backlight is on/off only (CH422G expander, no PWM), so it
-// can't be dimmed in hardware. Instead the idle photo is darkened in software:
-// 100 = original photo, lower = darker. 0 turns the backlight off on idle.
-static const uint8_t IDLE_PHOTO_BRIGHTNESS_PCT = 60;
+// Legacy: photo idle brightness (unused when prize station is idle)
+static const uint8_t IDLE_PHOTO_BRIGHTNESS_PCT = 100;

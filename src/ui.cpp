@@ -5,7 +5,6 @@
 
 #include "clock_util.h"
 #include "display_board.h"
-#include "idle_photo.h"
 #include "job_icons.h"
 
 AppUi *AppUi::self_ = nullptr;
@@ -21,6 +20,61 @@ lv_obj_t *make_label(lv_obj_t *parent, const char *text, const lv_font_t *font, 
   lv_obj_set_style_text_color(lbl, c(color), 0);
   return lbl;
 }
+
+void strip_chrome(lv_obj_t *o) {
+  lv_obj_set_style_pad_all(o, 0, 0);
+  lv_obj_set_style_border_width(o, 0, 0);
+  lv_obj_set_style_outline_width(o, 0, 0);
+  lv_obj_set_style_shadow_width(o, 0, 0);
+  lv_obj_set_style_radius(o, 0, 0);
+}
+
+void style_space_bg(lv_obj_t *o) {
+  strip_chrome(o);
+  lv_obj_set_style_bg_color(o, c(COL_PRIZE_BG), 0);
+  lv_obj_set_style_bg_grad_color(o, c(COL_PRIZE_BG2), 0);
+  lv_obj_set_style_bg_grad_dir(o, LV_GRAD_DIR_VER, 0);
+  lv_obj_set_style_bg_main_stop(o, 0, 0);
+  lv_obj_set_style_bg_grad_stop(o, 255, 0);
+  lv_obj_set_style_bg_opa(o, LV_OPA_COVER, 0);
+}
+
+lv_obj_t *make_bar(lv_obj_t *parent, int x, int y, int w, int h, uint32_t color, lv_opa_t opa) {
+  lv_obj_t *bar = lv_obj_create(parent);
+  strip_chrome(bar);
+  lv_obj_set_size(bar, w, h);
+  lv_obj_set_pos(bar, x, y);
+  lv_obj_set_style_bg_color(bar, c(color), 0);
+  lv_obj_set_style_bg_opa(bar, opa, 0);
+  lv_obj_clear_flag(bar, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+  return bar;
+}
+
+void paint_hud_backdrop(lv_obj_t *parent) {
+  make_bar(parent, 0, 0, LCD_H_RES, 64, COL_PRIZE_SKY, LV_OPA_COVER);
+  constexpr int floor_y = 400;
+  make_bar(parent, 0, floor_y, LCD_H_RES, 2, COL_PRIZE_ACCENT, LV_OPA_50);
+  for (int i = 0; i < 9; ++i) {
+    make_bar(parent, 40 + i * 90, floor_y, 1, LCD_V_RES - floor_y, COL_PRIZE_LINE, LV_OPA_50);
+  }
+  make_bar(parent, 16, 12, 36, 3, COL_PRIZE_ACCENT, LV_OPA_COVER);
+  make_bar(parent, 16, 12, 3, 28, COL_PRIZE_ACCENT, LV_OPA_COVER);
+  make_bar(parent, LCD_H_RES - 52, 12, 36, 3, COL_PRIZE_ACCENT, LV_OPA_COVER);
+  make_bar(parent, LCD_H_RES - 19, 12, 3, 28, COL_PRIZE_ACCENT, LV_OPA_COVER);
+}
+
+const uint32_t AD_RIMS[] = {0x22D3EE, 0xA78BFA, 0x34D399, 0xF472B6, 0xFBBF24};
+const size_t AD_RIM_COUNT = sizeof(AD_RIMS) / sizeof(AD_RIMS[0]);
+
+// 800×480 prize idle layout (jobs button is the big CTA)
+constexpr int CARD_Y = 58;
+constexpr int CARD_H = 160;
+constexpr int WANT_Y = 232;
+constexpr int WANT_H = 56;
+constexpr int JOBS_Y = 300;
+constexpr int JOBS_H = 72;
+constexpr int SCORE_Y = 388;
+constexpr int SCORE_H = 72;
 
 size_t countJobsInCategory(size_t kid, JobCategory cat) {
   size_t n = 0;
@@ -66,6 +120,7 @@ void AppUi::begin(JobState *state, MqttBridge *mqtt) {
   buildKidScaffold();
   buildNotDoneScaffold();
   buildDoerPicker();
+  last_carousel_ms_ = millis();
   showIdle();
 }
 
@@ -90,8 +145,7 @@ bool AppUi::isActiveSession() const {
 }
 
 void AppUi::applyBacklightForScreen() {
-  // On/off only on this board (see config.h)
-  display_board_set_backlight((screen_kind_ == ScreenKind::Idle && IDLE_PHOTO_BRIGHTNESS_PCT == 0) ? 0 : 100);
+  display_board_set_backlight(100);
 }
 
 void AppUi::styleTab(lv_obj_t *btn, bool active, uint32_t accent) {
@@ -102,45 +156,160 @@ void AppUi::styleTab(lv_obj_t *btn, bool active, uint32_t accent) {
 
 void AppUi::buildIdle() {
   screen_idle_ = lv_obj_create(nullptr);
-  lv_obj_set_style_bg_color(screen_idle_, c(0x1B2430), 0);
-  lv_obj_set_style_bg_opa(screen_idle_, LV_OPA_COVER, 0);
+  style_space_bg(screen_idle_);
   lv_obj_clear_flag(screen_idle_, LV_OBJ_FLAG_SCROLLABLE);
-  // Tapping anywhere on the photo also wakes the panel
-  lv_obj_add_flag(screen_idle_, LV_OBJ_FLAG_CLICKABLE);
-  lv_obj_add_event_cb(screen_idle_, onLetsGo, LV_EVENT_CLICKED, nullptr);
 
-  if (idle_photo_begin(&idle_img_dsc_)) {
-    idle_img_ = lv_img_create(screen_idle_);
-    lv_img_set_src(idle_img_, &idle_img_dsc_);
-    lv_obj_set_size(idle_img_, LCD_H_RES, LCD_V_RES);
-    lv_obj_align(idle_img_, LV_ALIGN_CENTER, 0, 0);
-    lv_obj_clear_flag(idle_img_, LV_OBJ_FLAG_CLICKABLE);
+  ad_layer_ = lv_obj_create(screen_idle_);
+  style_space_bg(ad_layer_);
+  lv_obj_set_size(ad_layer_, LCD_H_RES, LCD_V_RES);
+  lv_obj_set_pos(ad_layer_, 0, 0);
+  lv_obj_clear_flag(ad_layer_, LV_OBJ_FLAG_SCROLLABLE);
+  paint_hud_backdrop(ad_layer_);
+
+  lv_obj_t *brand = make_label(ad_layer_, "PRIZE STATION", &lv_font_montserrat_24, COL_PRIZE_ACCENT);
+  lv_obj_align(brand, LV_ALIGN_TOP_MID, 0, 18);
+
+  prize_card_ = lv_obj_create(ad_layer_);
+  lv_obj_set_size(prize_card_, 720, CARD_H);
+  lv_obj_set_pos(prize_card_, (LCD_H_RES - 720) / 2, CARD_Y);
+  lv_obj_set_style_bg_color(prize_card_, c(COL_PRIZE_CARD), 0);
+  lv_obj_set_style_border_width(prize_card_, 3, 0);
+  lv_obj_set_style_border_color(prize_card_, c(COL_PRIZE_ACCENT), 0);
+  lv_obj_set_style_outline_width(prize_card_, 0, 0);
+  lv_obj_set_style_shadow_width(prize_card_, 0, 0);
+  lv_obj_set_style_radius(prize_card_, 18, 0);
+  lv_obj_set_style_pad_all(prize_card_, 12, 0);
+  lv_obj_clear_flag(prize_card_, LV_OBJ_FLAG_SCROLLABLE);
+  make_bar(prize_card_, 0, 0, 720, 5, COL_PRIZE_ACCENT, LV_OPA_COVER);
+
+  prize_name_ = make_label(prize_card_, "", &lv_font_montserrat_28, COL_TEXT);
+  lv_label_set_long_mode(prize_name_, LV_LABEL_LONG_WRAP);
+  lv_obj_set_width(prize_name_, 680);
+  lv_obj_set_style_text_align(prize_name_, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_align(prize_name_, LV_ALIGN_TOP_MID, 0, 28);
+
+  prize_cost_ = make_label(prize_card_, "", &lv_font_montserrat_24, COL_PRIZE_COST);
+  lv_obj_align(prize_cost_, LV_ALIGN_BOTTOM_MID, 0, -16);
+
+  want_btn_ = lv_btn_create(ad_layer_);
+  lv_obj_set_size(want_btn_, 300, WANT_H);
+  lv_obj_set_pos(want_btn_, (LCD_H_RES - 300) / 2, WANT_Y);
+  lv_obj_set_style_bg_color(want_btn_, c(COL_PRIZE_ACCENT), 0);
+  lv_obj_set_style_bg_color(want_btn_, c(COL_PRIZE_ACCENT2), LV_STATE_PRESSED);
+  lv_obj_set_style_radius(want_btn_, 12, 0);
+  lv_obj_set_style_shadow_width(want_btn_, 0, 0);
+  lv_obj_set_style_border_width(want_btn_, 0, 0);
+  lv_obj_add_event_cb(want_btn_, onWantPrize, LV_EVENT_CLICKED, nullptr);
+  lv_obj_t *want_lbl = make_label(want_btn_, "I WANT THIS", &lv_font_montserrat_24, COL_PRIZE_BG);
+  lv_obj_center(want_lbl);
+
+  // Big jobs entry button
+  jobs_btn_ = lv_btn_create(ad_layer_);
+  lv_obj_set_size(jobs_btn_, 520, JOBS_H);
+  lv_obj_set_pos(jobs_btn_, (LCD_H_RES - 520) / 2, JOBS_Y);
+  lv_obj_set_style_bg_color(jobs_btn_, c(0xF8FAFC), 0);
+  lv_obj_set_style_bg_color(jobs_btn_, c(COL_PRIZE_ACCENT2), LV_STATE_PRESSED);
+  lv_obj_set_style_radius(jobs_btn_, 16, 0);
+  lv_obj_set_style_shadow_width(jobs_btn_, 0, 0);
+  lv_obj_set_style_border_width(jobs_btn_, 3, 0);
+  lv_obj_set_style_border_color(jobs_btn_, c(COL_PRIZE_ACCENT), 0);
+  lv_obj_add_event_cb(jobs_btn_, onLetsGo, LV_EVENT_CLICKED, nullptr);
+  lv_obj_t *jobs_lbl = make_label(jobs_btn_, "JOBS  →", &lv_font_montserrat_28, COL_PRIZE_BG);
+  lv_obj_center(jobs_lbl);
+
+  score_row_ = lv_obj_create(ad_layer_);
+  strip_chrome(score_row_);
+  lv_obj_set_size(score_row_, LCD_H_RES - 16, SCORE_H);
+  lv_obj_set_pos(score_row_, 8, SCORE_Y);
+  lv_obj_set_style_bg_opa(score_row_, LV_OPA_TRANSP, 0);
+  lv_obj_clear_flag(score_row_, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_flex_flow(score_row_, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(score_row_, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+  const int chip_w = 148;
+  for (size_t i = 0; i < KID_COUNT; ++i) {
+    score_chips_[i] = lv_obj_create(score_row_);
+    lv_obj_set_size(score_chips_[i], chip_w, 56);
+    lv_obj_set_style_bg_color(score_chips_[i], c(0x0B1220), 0);
+    lv_obj_set_style_border_width(score_chips_[i], 2, 0);
+    lv_obj_set_style_border_color(score_chips_[i], c(KIDS[i].color), 0);
+    lv_obj_set_style_radius(score_chips_[i], 10, 0);
+    lv_obj_set_style_pad_all(score_chips_[i], 2, 0);
+    lv_obj_clear_flag(score_chips_[i], LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_t *chip = make_label(score_chips_[i], "", &lv_font_montserrat_14, COL_TEXT);
+    lv_label_set_long_mode(chip, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(chip, chip_w - 8);
+    lv_obj_set_style_text_align(chip, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_center(chip);
+    lv_obj_set_user_data(score_chips_[i], chip);
   }
 
-  // Soft gradient wipe so the CTA stays readable on any photo
-  lv_obj_t *veil = lv_obj_create(screen_idle_);
-  lv_obj_set_size(veil, LCD_H_RES, 160);
-  lv_obj_align(veil, LV_ALIGN_BOTTOM_MID, 0, 0);
-  lv_obj_set_style_bg_color(veil, c(0x0B1220), 0);
-  lv_obj_set_style_bg_opa(veil, LV_OPA_70, 0);
-  lv_obj_set_style_border_width(veil, 0, 0);
-  lv_obj_set_style_radius(veil, 0, 0);
-  lv_obj_clear_flag(veil, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+  picker_layer_ = lv_obj_create(screen_idle_);
+  style_space_bg(picker_layer_);
+  lv_obj_set_size(picker_layer_, LCD_H_RES, LCD_V_RES);
+  lv_obj_set_pos(picker_layer_, 0, 0);
+  lv_obj_add_flag(picker_layer_, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_clear_flag(picker_layer_, LV_OBJ_FLAG_SCROLLABLE);
+  paint_hud_backdrop(picker_layer_);
 
-  lv_obj_t *brand = make_label(screen_idle_, "Jobs Sign-off", &lv_font_montserrat_20, COL_TEXT);
-  lv_obj_align(brand, LV_ALIGN_BOTTOM_MID, 0, -118);
+  picker_title_ = make_label(picker_layer_, "SELECT OPERATOR", &lv_font_montserrat_28, COL_PRIZE_ACCENT);
+  lv_obj_align(picker_title_, LV_ALIGN_TOP_MID, 0, 16);
+  picker_sub_ = make_label(picker_layer_, "", &lv_font_montserrat_18, COL_MUTED);
+  lv_obj_align(picker_sub_, LV_ALIGN_TOP_MID, 0, 52);
 
-  lv_obj_t *go = lv_btn_create(screen_idle_);
-  lv_obj_set_size(go, 280, 64);
-  lv_obj_align(go, LV_ALIGN_BOTTOM_MID, 0, -36);
-  lv_obj_set_style_bg_color(go, c(0xE8EEF5), 0);
-  lv_obj_set_style_bg_color(go, c(0xFFFFFF), LV_STATE_PRESSED);
-  lv_obj_set_style_radius(go, 16, 0);
-  lv_obj_set_style_shadow_width(go, 0, 0);
-  lv_obj_set_style_border_width(go, 0, 0);
-  lv_obj_add_event_cb(go, onLetsGo, LV_EVENT_CLICKED, nullptr);
-  lv_obj_t *go_lbl = make_label(go, "Let's Go", &lv_font_montserrat_28, 0x1A2332);
-  lv_obj_center(go_lbl);
+  const int cols = 3;
+  const int btn_w = 230;
+  const int btn_h = 96;
+  const int gap_x = 18;
+  const int gap_y = 14;
+  const int start_x = (LCD_H_RES - (cols * btn_w + (cols - 1) * gap_x)) / 2;
+  for (size_t i = 0; i < KID_COUNT; ++i) {
+    kid_btns_[i] = lv_btn_create(picker_layer_);
+    lv_obj_set_size(kid_btns_[i], btn_w, btn_h);
+    const int row = static_cast<int>(i) / cols;
+    const int col = static_cast<int>(i) % cols;
+    lv_obj_set_pos(kid_btns_[i], start_x + col * (btn_w + gap_x), 90 + row * (btn_h + gap_y));
+    lv_obj_set_style_bg_color(kid_btns_[i], c(0x0B1220), 0);
+    lv_obj_set_style_border_width(kid_btns_[i], 3, 0);
+    lv_obj_set_style_border_color(kid_btns_[i], c(KIDS[i].color), 0);
+    lv_obj_set_style_radius(kid_btns_[i], 12, 0);
+    lv_obj_set_style_shadow_width(kid_btns_[i], 0, 0);
+    lv_obj_add_event_cb(kid_btns_[i], onPrizeKid, LV_EVENT_CLICKED, reinterpret_cast<void *>(i));
+    kid_lbls_[i] = make_label(kid_btns_[i], KIDS[i].name, &lv_font_montserrat_20, COL_TEXT);
+    lv_obj_set_style_text_align(kid_lbls_[i], LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_center(kid_lbls_[i]);
+  }
+
+  lv_obj_t *cancel = lv_btn_create(picker_layer_);
+  lv_obj_set_size(cancel, 200, 56);
+  lv_obj_set_pos(cancel, (LCD_H_RES - 200) / 2, LCD_V_RES - 72);
+  lv_obj_set_style_bg_color(cancel, c(COL_PRIZE_BTN_BACK), 0);
+  lv_obj_set_style_radius(cancel, 10, 0);
+  lv_obj_set_style_shadow_width(cancel, 0, 0);
+  lv_obj_set_style_border_width(cancel, 2, 0);
+  lv_obj_set_style_border_color(cancel, c(COL_MUTED), 0);
+  lv_obj_add_event_cb(cancel, onPrizeCancel, LV_EVENT_CLICKED, nullptr);
+  lv_obj_t *cl = make_label(cancel, "ABORT", &lv_font_montserrat_18, COL_TEXT);
+  lv_obj_center(cl);
+
+  splash_layer_ = lv_obj_create(screen_idle_);
+  style_space_bg(splash_layer_);
+  lv_obj_set_size(splash_layer_, LCD_H_RES, LCD_V_RES);
+  lv_obj_set_pos(splash_layer_, 0, 0);
+  lv_obj_add_flag(splash_layer_, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_clear_flag(splash_layer_, LV_OBJ_FLAG_SCROLLABLE);
+
+  splash_stars_ = make_label(splash_layer_, "* * * * *", &lv_font_montserrat_28, COL_PRIZE_ACCENT);
+  lv_obj_align(splash_stars_, LV_ALIGN_TOP_MID, 0, 70);
+  splash_title_ = make_label(splash_layer_, "YOU WIN!", &lv_font_montserrat_28, COL_TEXT);
+  lv_obj_align(splash_title_, LV_ALIGN_CENTER, 0, -40);
+  splash_kid_ = make_label(splash_layer_, "", &lv_font_montserrat_28, COL_PRIZE_ACCENT);
+  lv_obj_align(splash_kid_, LV_ALIGN_CENTER, 0, 20);
+  splash_sub_ = make_label(splash_layer_, "", &lv_font_montserrat_20, COL_MUTED);
+  lv_obj_set_width(splash_sub_, LCD_H_RES - 80);
+  lv_label_set_long_mode(splash_sub_, LV_LABEL_LONG_WRAP);
+  lv_obj_set_style_text_align(splash_sub_, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_align(splash_sub_, LV_ALIGN_CENTER, 0, 80);
 }
 
 void AppUi::buildHome() {
@@ -653,10 +822,135 @@ void AppUi::completeLeftover(size_t doer) {
   showNotDone();
 }
 
+void AppUi::setIdleMode(IdleMode m) {
+  idle_mode_ = m;
+  if (m == IdleMode::Ads) {
+    lv_obj_clear_flag(ad_layer_, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(picker_layer_, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(splash_layer_, LV_OBJ_FLAG_HIDDEN);
+  } else if (m == IdleMode::Picker) {
+    lv_obj_add_flag(ad_layer_, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(picker_layer_, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(splash_layer_, LV_OBJ_FLAG_HIDDEN);
+  } else {
+    lv_obj_add_flag(ad_layer_, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(picker_layer_, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(splash_layer_, LV_OBJ_FLAG_HIDDEN);
+  }
+}
+
+void AppUi::cyclePrizeRim() {
+  const uint32_t rim = AD_RIMS[ad_index_ % AD_RIM_COUNT];
+  lv_obj_set_style_border_color(prize_card_, c(rim), 0);
+}
+
+void AppUi::refreshPrizeScores() {
+  for (size_t i = 0; i < KID_COUNT; ++i) {
+    char buf[40];
+    snprintf(buf, sizeof(buf), "%s\n%lu", KIDS[i].name,
+             static_cast<unsigned long>(state_->rewardTally(i)));
+    auto *lbl = static_cast<lv_obj_t *>(lv_obj_get_user_data(score_chips_[i]));
+    if (lbl) {
+      lv_label_set_text(lbl, buf);
+      lv_obj_set_style_text_align(lbl, LV_TEXT_ALIGN_CENTER, 0);
+    }
+  }
+}
+
+void AppUi::refreshPrizePicker() {
+  const uint16_t cost =
+      (pending_prize_ < state_->prizeCount()) ? state_->prize(pending_prize_).cost : 0;
+  for (size_t i = 0; i < KID_COUNT; ++i) {
+    const uint32_t pts = state_->rewardTally(i);
+    char buf[48];
+    if (cost == 0) {
+      snprintf(buf, sizeof(buf), "%s\n%lu pts", KIDS[i].name, static_cast<unsigned long>(pts));
+      lv_obj_set_style_bg_opa(kid_btns_[i], LV_OPA_COVER, 0);
+    } else if (pts >= cost) {
+      snprintf(buf, sizeof(buf), "%s\n%lu pts  OK!", KIDS[i].name, static_cast<unsigned long>(pts));
+      lv_obj_set_style_bg_opa(kid_btns_[i], LV_OPA_COVER, 0);
+    } else {
+      snprintf(buf, sizeof(buf), "%s\nneed %u more", KIDS[i].name,
+               static_cast<unsigned>(cost - pts));
+      lv_obj_set_style_bg_opa(kid_btns_[i], LV_OPA_60, 0);
+    }
+    lv_label_set_text(kid_lbls_[i], buf);
+    lv_obj_set_style_text_align(kid_lbls_[i], LV_TEXT_ALIGN_CENTER, 0);
+  }
+}
+
+void AppUi::refreshPrizeAd() {
+  if (state_->prizeCount() == 0) {
+    lv_label_set_text(prize_name_, "No prizes yet");
+    lv_label_set_text(prize_cost_, "Ask a grown-up!");
+    lv_obj_add_state(want_btn_, LV_STATE_DISABLED);
+    refreshPrizeScores();
+    return;
+  }
+  lv_obj_clear_state(want_btn_, LV_STATE_DISABLED);
+  if (ad_index_ >= state_->prizeCount()) {
+    ad_index_ = 0;
+  }
+  const PrizeDef &p = state_->prize(ad_index_);
+  lv_label_set_text(prize_name_, p.name);
+  char cost[48];
+  snprintf(cost, sizeof(cost), "%u CREDITS", p.cost);
+  lv_label_set_text(prize_cost_, cost);
+  cyclePrizeRim();
+  refreshPrizeScores();
+}
+
+void AppUi::showPrizePicker(size_t prize_index) {
+  pending_prize_ = prize_index;
+  if (prize_index < state_->prizeCount()) {
+    const PrizeDef &p = state_->prize(prize_index);
+    char sub[80];
+    snprintf(sub, sizeof(sub), "%s  //  %u credits", p.name, p.cost);
+    lv_label_set_text(picker_sub_, sub);
+  } else {
+    lv_label_set_text(picker_sub_, "");
+  }
+  refreshPrizePicker();
+  setIdleMode(IdleMode::Picker);
+}
+
+void AppUi::showPrizeSplashFromState() {
+  const auto &s = state_->pendingSplash();
+  if (s.kind == JobState::SplashKind::None) {
+    return;
+  }
+  uint32_t tint = COL_PRIZE_WIN;
+  const char *stars = "* * * JACKPOT * * *";
+  if (s.kind == JobState::SplashKind::Bonus) {
+    tint = COL_PRIZE_BONUS;
+    stars = "* * * BONUS DROP * * *";
+  } else if (s.kind == JobState::SplashKind::KeepGoing) {
+    tint = COL_PRIZE_KEEP;
+    stars = "SIGNAL WEAK — KEEP GOING";
+  }
+  lv_obj_set_style_bg_color(splash_layer_, c(COL_PRIZE_BG), 0);
+  lv_obj_set_style_bg_grad_color(splash_layer_, c(tint), 0);
+  lv_obj_set_style_bg_grad_dir(splash_layer_, LV_GRAD_DIR_VER, 0);
+  lv_label_set_text(splash_stars_, stars);
+  lv_label_set_text(splash_title_, s.title);
+  lv_label_set_text(splash_sub_, s.subtitle);
+  if (s.kid < KID_COUNT) {
+    lv_label_set_text(splash_kid_, KIDS[s.kid].name);
+  } else {
+    lv_label_set_text(splash_kid_, "");
+  }
+  setIdleMode(IdleMode::Splash);
+  splash_until_ms_ = millis() + (s.kind == JobState::SplashKind::KeepGoing ? 3000 : SPLASH_MS);
+  state_->clearSplash();
+}
+
 void AppUi::showIdle() {
   awaiting_doer_ = false;
   screen_kind_ = ScreenKind::Idle;
   applyBacklightForScreen();
+  setIdleMode(IdleMode::Ads);
+  refreshPrizeAd();
+  last_carousel_ms_ = millis();
   lv_scr_load(screen_idle_);
 }
 
@@ -698,6 +992,11 @@ void AppUi::showNotDone() {
 void AppUi::refreshActiveScreen() {
   switch (screen_kind_) {
     case ScreenKind::Idle:
+      if (idle_mode_ == IdleMode::Ads) {
+        refreshPrizeAd();
+      } else if (idle_mode_ == IdleMode::Picker) {
+        refreshPrizePicker();
+      }
       break;
     case ScreenKind::Home:
       updateHomeRemainders();
@@ -721,13 +1020,32 @@ void AppUi::tick() {
     showIdle();
   }
 
+  if (screen_kind_ == ScreenKind::Idle) {
+    if (idle_mode_ == IdleMode::Splash && millis() >= splash_until_ms_) {
+      setIdleMode(IdleMode::Ads);
+      refreshPrizeAd();
+    }
+    if (idle_mode_ == IdleMode::Ads && state_->prizeCount() > 0 &&
+        millis() - last_carousel_ms_ >= CAROUSEL_MS) {
+      last_carousel_ms_ = millis();
+      ad_index_ = (ad_index_ + 1) % state_->prizeCount();
+      refreshPrizeAd();
+    }
+  }
+
   const uint32_t rev = state_->revision();
   const uint32_t cfg_rev = state_->configRevision();
   if (rev != seen_revision_ || cfg_rev != seen_config_revision_) {
     const bool cfg_changed = cfg_rev != seen_config_revision_;
     seen_revision_ = rev;
     seen_config_revision_ = cfg_rev;
-    if (!awaiting_doer_ && screen_kind_ != ScreenKind::Idle) {
+    if (screen_kind_ == ScreenKind::Idle) {
+      if (state_->pendingSplash().kind != JobState::SplashKind::None) {
+        showPrizeSplashFromState();
+      } else {
+        refreshActiveScreen();
+      }
+    } else if (!awaiting_doer_) {
       if (cfg_changed && screen_kind_ == ScreenKind::Kid) {
         rebuildJobList();  // job list for this kid changed (web app)
       }
@@ -762,9 +1080,53 @@ void AppUi::tick() {
   }
 }
 
+void AppUi::onWantPrize(lv_event_t *e) {
+  (void)e;
+  if (!self_ || self_->screen_kind_ != ScreenKind::Idle || self_->idle_mode_ != IdleMode::Ads) {
+    return;
+  }
+  if (self_->state_->prizeCount() == 0) {
+    return;
+  }
+  self_->showPrizePicker(self_->ad_index_);
+}
+
+void AppUi::onPrizeCancel(lv_event_t *e) {
+  (void)e;
+  if (!self_) {
+    return;
+  }
+  self_->setIdleMode(IdleMode::Ads);
+  self_->refreshPrizeAd();
+}
+
+void AppUi::onPrizeKid(lv_event_t *e) {
+  if (!self_) {
+    return;
+  }
+  const uint32_t now = millis();
+  if (now - self_->last_claim_ms_ < CLAIM_DEBOUNCE_MS) {
+    return;
+  }
+  self_->last_claim_ms_ = now;
+  const size_t kid = reinterpret_cast<size_t>(lv_event_get_user_data(e));
+  const size_t prize = self_->pending_prize_;
+  uint32_t before = 0;
+  uint32_t after = 0;
+  const bool ok = self_->state_->tryClaimPrize(kid, prize, &before, &after);
+  if (ok) {
+    self_->mqtt_->publishRewardTally(kid);
+    self_->mqtt_->publishClaim(kid, prize, before, after);
+    self_->mqtt_->publishCelebrateWinner(kid, prize, after);
+  }
+  self_->showPrizeSplashFromState();
+}
+
 void AppUi::onLetsGo(lv_event_t *e) {
   (void)e;
-  self_->showHome();
+  if (self_) {
+    self_->showHome();
+  }
 }
 
 void AppUi::onKidCard(lv_event_t *e) {
