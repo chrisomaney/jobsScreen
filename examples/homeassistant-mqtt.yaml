@@ -23,6 +23,10 @@ mqtt:
       state_topic: "kids/hazel/internet"
       payload_on: "on"
       payload_off: "off"
+    - name: "Common Internet Ready"
+      state_topic: "kids/common/internet"
+      payload_on: "on"
+      payload_off: "off"
 
   sensor:
     - name: "Xavier Rewards Tally"

@@ -222,6 +222,23 @@ void MqttBridge::publishKidSummary(size_t kid) {
   serializeJson(doc, json);
   client_.publish(topicProgress(kid).c_str(), json.c_str(), true);
   publishRewardTally(kid);
+  publishCommonInternet();
+}
+
+void MqttBridge::publishCommonInternet() {
+  if (!client_.connected()) {
+    return;
+  }
+  // Xavier or Presley finishing their own jobs unlocks shared COMMON devices.
+  bool ready = false;
+  for (size_t i = 0; i < COMMON_UNLOCK_KID_COUNT; ++i) {
+    const size_t kid = COMMON_UNLOCK_KIDS[i];
+    if (kid < KID_COUNT && state_->internetReady(kid)) {
+      ready = true;
+      break;
+    }
+  }
+  client_.publish(MQTT_COMMON_INTERNET, ready ? "on" : "off", true);
 }
 
 void MqttBridge::publishRewardTally(size_t kid) {
