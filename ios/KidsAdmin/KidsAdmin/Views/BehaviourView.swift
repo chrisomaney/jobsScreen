@@ -25,11 +25,16 @@ struct BehaviourView: View {
                     }
                     TextField("Points (+ / −)", text: $points)
                         .keyboardType(.numbersAndPunctuation)
+                        .submitLabel(.done)
+                        .onSubmit { Keyboard.dismiss() }
                 }
                 Section("Message") {
                     TextField("Title", text: $title)
+                        .submitLabel(.next)
                     TextField("Message for panel & TV", text: $message, axis: .vertical)
                         .lineLimit(3...6)
+                        .submitLabel(.done)
+                        .onSubmit { Keyboard.dismiss() }
                     TextField("Seconds on panel", text: $seconds)
                         .keyboardType(.numberPad)
                     Toggle("Show on panel", isOn: $panel)
@@ -42,11 +47,13 @@ struct BehaviourView: View {
                         .disabled(!admin.connected)
                 }
             }
+            .dismissKeyboardOnScroll()
             .navigationTitle("Behaviour")
         }
     }
 
     private func send(sign: Int) {
+        Keyboard.dismiss()
         let n = abs(Int(points) ?? 0) * sign
         guard n != 0 else { banner = "Enter points"; return }
         let msg = message.trimmingCharacters(in: .whitespacesAndNewlines)

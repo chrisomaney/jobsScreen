@@ -10,6 +10,7 @@ struct InternetView: View {
                     Text("Force On / Off overrides jobs. Auto follows required jobs done on the panel.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
+                        .onTapGesture { Keyboard.dismiss() }
                 }
 
                 Section("Kids") {
@@ -64,6 +65,7 @@ struct InternetView: View {
                     .disabled(!admin.connected)
                 }
             }
+            .dismissKeyboardOnScroll()
             .navigationTitle("Internet")
         }
     }
