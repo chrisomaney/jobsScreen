@@ -17,7 +17,7 @@ Kids: **Xavier, Presley, Jax, Banx, Hazel**. Phone admin: Jobs Chooser + [reward
 | **Jobs left to do** | Opens **7:40am**. Outstanding items by kid. Done → **Who did this?** name picker |
 | **Who did this?** | Credits the helper for Rewards; marks the job done on the **owner’s** list. The owner isn’t offered (no self-credit) |
 
-Idle timeout: `IDLE_TIMEOUT_MS` in `include/config.h`. **Rewards HQ** (`webapp/rewards-admin.html`): prizes, ± points, add/edit expectations & paid jobs, expectations bundle (only when all done), behaviour (± with panel + TV message), scheduled rules, and panel messages — same Mosquitto login as Jobs Chooser.
+Idle timeout: `IDLE_TIMEOUT_MS` in `include/config.h`. **Rewards HQ** (`webapp/rewards-admin.html`): prizes, internet On/Off/Auto override, ± points, add/edit expectations & paid jobs, behaviour, schedules. **Native iPhone app (Xcode):** [`ios/KidsAdmin`](ios/KidsAdmin) — open `KidsAdmin.xcodeproj`, sign with your Apple ID, Run on your iPhone.
 
 ### Unlock & rewards rules
 

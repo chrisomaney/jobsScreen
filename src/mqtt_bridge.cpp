@@ -85,7 +85,10 @@ void MqttBridge::ensureConnected() {
   client_.subscribe(MQTT_PANEL_MESSAGE_SET);
   for (size_t k = 0; k < KID_COUNT; ++k) {
     client_.subscribe(topicRewardTally(k).c_str());
+    client_.subscribe((topicInternet(k) + "/set").c_str());
   }
+  // Shared MikroTik profile — admin can force on/off; panel does not auto-manage it.
+  client_.subscribe((String(MQTT_BASE) + "/common/internet/set").c_str());
   publishAll();
   Serial.println("[mqtt] connected");
 }
@@ -104,6 +107,44 @@ void MqttBridge::handleMessage(char *topic, byte *payload, unsigned int length) 
     } else {
       publishConfig();  // nothing changed — still echo so the web app can confirm
     }
+    return;
+  }
+
+  // Parent internet override: kids/{slug}/internet/set  payload on|off|auto
+  for (size_t k = 0; k < KID_COUNT; ++k) {
+    if (t == topicInternet(k) + "/set") {
+      String body;
+      body.reserve(length + 1);
+      for (unsigned int i = 0; i < length; ++i) {
+        body += static_cast<char>(payload[i]);
+      }
+      body.trim();
+      body.toLowerCase();
+      JobState::InternetOverride mode = JobState::InternetOverride::Auto;
+      if (body == "on" || body == "1" || body == "true") {
+        mode = JobState::InternetOverride::On;
+      } else if (body == "off" || body == "0" || body == "false") {
+        mode = JobState::InternetOverride::Off;
+      } else {
+        mode = JobState::InternetOverride::Auto;
+      }
+      state_->setInternetOverride(k, mode);
+      publishKidSummary(k);
+      Serial.printf("[mqtt] internet override %s = %s\n", KIDS[k].slug, body.c_str());
+      return;
+    }
+  }
+  if (t == String(MQTT_BASE) + "/common/internet/set") {
+    String body;
+    body.reserve(length + 1);
+    for (unsigned int i = 0; i < length; ++i) {
+      body += static_cast<char>(payload[i]);
+    }
+    body.trim();
+    body.toLowerCase();
+    const char *val = (body == "on" || body == "1" || body == "true") ? "on" : "off";
+    client_.publish((String(MQTT_BASE) + "/common/internet").c_str(), val, true);
+    Serial.printf("[mqtt] common internet = %s\n", val);
     return;
   }
   if (t == String(MQTT_BASE) + "/cmd/reset_all") {
@@ -253,7 +294,7 @@ void MqttBridge::publishKidSummary(size_t kid) {
     return;
   }
 
-  const bool ready = state_->internetReady(kid);
+  const bool ready = state_->internetEffective(kid);
   client_.publish(topicInternet(kid).c_str(), ready ? "on" : "off", true);
 
   JsonDocument doc;
@@ -266,6 +307,11 @@ void MqttBridge::publishKidSummary(size_t kid) {
   doc["required_total"] = req_total;
   doc["pct"] = req_total ? (req_done * 100) / req_total : 100;
   doc["internet"] = ready;
+  doc["jobs_ready"] = state_->internetReady(kid);
+  const auto ov = state_->internetOverride(kid);
+  doc["override"] = ov == JobState::InternetOverride::On    ? "on"
+                    : ov == JobState::InternetOverride::Off ? "off"
+                                                            : "auto";
   doc["name"] = KIDS[kid].name;
   doc["rewards"] = state_->rewardTally(kid);
 

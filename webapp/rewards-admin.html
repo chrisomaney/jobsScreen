@@ -78,6 +78,7 @@
   <div id="app" class="hidden">
     <div class="tabs" id="tabs">
       <button type="button" class="on" data-tab="prizes">Prizes</button>
+      <button type="button" data-tab="internet">Internet</button>
       <button type="button" data-tab="points">± Points</button>
       <button type="button" data-tab="expect">Expectations</button>
       <button type="button" data-tab="jobs">Jobs</button>
@@ -97,6 +98,19 @@
         <div class="actions">
           <button class="mint" id="addPrize">Add prize</button>
           <button class="big" id="saveCatalog" style="width:auto">Save prizes</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="tab-internet" class="hidden">
+      <div class="card">
+        <h2>Internet override</h2>
+        <p class="hint">Force On / Off stays until you change it. Auto follows required jobs on the panel. Prefer the native <strong>Kids Admin</strong> iPhone app in <code>ios/KidsAdmin</code>.</p>
+        <div id="netKids"></div>
+        <h3>Common profile</h3>
+        <div class="actions">
+          <button class="mint" id="commonOn">Force On</button>
+          <button class="pink" id="commonOff">Force Off</button>
         </div>
       </div>
     </div>
@@ -244,10 +258,11 @@ const KIDS = [
   {name:'Hazel', slug:'hazel', color:'#A855F7'},
 ];
 const DAY_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-const TABS = ['prizes','points','expect','jobs','behaviour','rules','message'];
+const TABS = ['prizes','internet','points','expect','jobs','behaviour','rules','message'];
 let client = null, catalog = [], jobs = [], jobPoints = {}, rules = [];
 let expBundle = 0, customSlotsFree = null, editingId = null;
 const tallies = Object.fromEntries(KIDS.map(k => [k.slug, 0]));
+const netStatus = Object.fromEntries(KIDS.map(k => [k.slug, { on:false, override:'auto', jobsReady:false }]));
 const $ = id => document.getElementById(id);
 let toastTimer;
 function toast(msg) {
@@ -453,6 +468,29 @@ function renderKids() {
     publishAdjust(b.dataset.sub, -n);
   });
 }
+function renderInternet() {
+  $('netKids').innerHTML = KIDS.map(k => {
+    const s = netStatus[k.slug] || {};
+    return `<div class="jobcard">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span style="width:14px;height:14px;border-radius:50%;background:${k.color}"></span>
+          <div><strong>${k.name}</strong><div class="meta">${s.on?'ON':'OFF'} · override ${s.override||'auto'} · jobs ${s.jobsReady?'ready':'locked'}</div></div>
+        </div>
+      </div>
+      <div class="actions">
+        <button class="mint" data-net="${k.slug}" data-mode="on">On</button>
+        <button class="pink" data-net="${k.slug}" data-mode="off">Off</button>
+        <button class="ghost" data-net="${k.slug}" data-mode="auto">Auto</button>
+      </div>
+    </div>`;
+  }).join('');
+  $('netKids').querySelectorAll('[data-net]').forEach(b => b.onclick = () => {
+    if (!client?.connected) return alert('Connect first');
+    client.publish(`kids/${b.dataset.net}/internet/set`, b.dataset.mode);
+    toast(`${b.dataset.net}: ${b.dataset.mode}`);
+  });
+}
 function renderExpect() {
   $('expBundle').value = expBundle;
   updateSlotHints();
@@ -591,7 +629,11 @@ function connect() {
     $('connectCard').classList.add('hidden');
     $('app').classList.remove('hidden');
     client.subscribe(['kids/rewards/catalog','kids/rewards/rules/state','kids/config/state']);
-    KIDS.forEach(k => client.subscribe(`kids/${k.slug}/rewards/tally`));
+    KIDS.forEach(k => {
+      client.subscribe(`kids/${k.slug}/rewards/tally`);
+      client.subscribe(`kids/${k.slug}/progress`);
+      client.subscribe(`kids/${k.slug}/internet`);
+    });
   });
   client.on('close', () => setStatus(false, 'Offline'));
   client.on('message', (topic, buf) => {
@@ -643,6 +685,20 @@ function connect() {
     }
     KIDS.forEach(k => {
       if (topic === `kids/${k.slug}/rewards/tally`) { tallies[k.slug] = parseInt(body,10)||0; renderKids(); }
+      if (topic === `kids/${k.slug}/internet`) {
+        netStatus[k.slug].on = body === 'on';
+        renderInternet();
+      }
+      if (topic === `kids/${k.slug}/progress`) {
+        try {
+          const d = JSON.parse(body);
+          netStatus[k.slug].on = !!d.internet;
+          netStatus[k.slug].jobsReady = !!d.jobs_ready;
+          netStatus[k.slug].override = d.override || 'auto';
+          if (typeof d.rewards === 'number') tallies[k.slug] = d.rewards;
+          renderInternet(); renderKids();
+        } catch (_) {}
+      }
     });
   });
 }
@@ -706,6 +762,16 @@ $('saveJobsPts').onclick = () => {
 };
 $('addExpBtn').onclick = () => addCatalogueItem('expectation');
 $('addJobBtn').onclick = () => addCatalogueItem('paid');
+$('commonOn').onclick = () => {
+  if (!client?.connected) return alert('Connect first');
+  client.publish('kids/common/internet/set', 'on');
+  toast('common → on');
+};
+$('commonOff').onclick = () => {
+  if (!client?.connected) return alert('Connect first');
+  client.publish('kids/common/internet/set', 'off');
+  toast('common → off');
+};
 $('behReward').onclick = () => sendBehaviour('+');
 $('behPenalty').onclick = () => sendBehaviour('-');
 $('sendMsg').onclick = () => {
@@ -730,7 +796,7 @@ $('sendMsg').onclick = () => {
     const s = JSON.parse(localStorage.getItem('rewardsAdmin')||'null');
     if (s?.remember) { $('broker').value = s.url||$('broker').value; $('user').value = s.username||''; $('pass').value = s.password||''; connect(); }
   } catch(_){}
-  renderPrizes(); renderKids(); renderExpect(); renderJobPoints(); renderRules(); syncRuleKindUi();
+  renderPrizes(); renderKids(); renderInternet(); renderExpect(); renderJobPoints(); renderRules(); syncRuleKindUi();
 })();
 </script>
 </body>

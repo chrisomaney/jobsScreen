@@ -318,6 +318,7 @@ void JobState::begin() {
     loadPrizeDefaults();
     savePrizeCatalog();
   }
+  loadInternetOverrides();
   job_day_ = prefs_.getUInt("day", 0);
 }
 
@@ -645,6 +646,56 @@ bool JobState::internetReady(size_t kid) const {
   }
   // A kid with no required jobs assigned has nothing blocking internet.
   return requiredDoneCount(kid) >= requiredTotal(kid);
+}
+
+JobState::InternetOverride JobState::internetOverride(size_t kid) const {
+  if (kid >= KID_COUNT) {
+    return InternetOverride::Auto;
+  }
+  return internet_override_[kid];
+}
+
+void JobState::setInternetOverride(size_t kid, InternetOverride mode) {
+  if (kid >= KID_COUNT) {
+    return;
+  }
+  if (internet_override_[kid] == mode) {
+    return;
+  }
+  internet_override_[kid] = mode;
+  persistInternetOverride(kid);
+  bump();
+}
+
+bool JobState::internetEffective(size_t kid) const {
+  if (kid >= KID_COUNT) {
+    return false;
+  }
+  switch (internet_override_[kid]) {
+    case InternetOverride::On:
+      return true;
+    case InternetOverride::Off:
+      return false;
+    case InternetOverride::Auto:
+    default:
+      return internetReady(kid);
+  }
+}
+
+void JobState::loadInternetOverrides() {
+  net_prefs_.begin("netov", false);
+  for (size_t k = 0; k < KID_COUNT; ++k) {
+    const uint8_t v = net_prefs_.getUChar((String("o") + k).c_str(), 0);
+    internet_override_[k] =
+        v == 1 ? InternetOverride::On : v == 2 ? InternetOverride::Off : InternetOverride::Auto;
+  }
+}
+
+void JobState::persistInternetOverride(size_t kid) {
+  if (kid >= KID_COUNT) {
+    return;
+  }
+  net_prefs_.putUChar((String("o") + kid).c_str(), static_cast<uint8_t>(internet_override_[kid]));
 }
 
 uint32_t JobState::rewardTally(size_t kid) const {

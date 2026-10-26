@@ -46,7 +46,14 @@ public:
   size_t remainingCount(size_t kid) const { return assignedCount(kid) - doneCount(kid); }
   size_t requiredTotal(size_t kid) const;
   size_t requiredDoneCount(size_t kid) const;
-  bool internetReady(size_t kid) const;
+  bool internetReady(size_t kid) const;  // based on required jobs only
+
+  // Parent override for MikroTik unlock. Auto = follow internetReady().
+  enum class InternetOverride : uint8_t { Auto = 0, On = 1, Off = 2 };
+  InternetOverride internetOverride(size_t kid) const;
+  void setInternetOverride(size_t kid, InternetOverride mode);
+  // Effective on/off published to kids/{slug}/internet (override wins over jobs).
+  bool internetEffective(size_t kid) const;
 
   uint32_t rewardTally(size_t kid) const;
   void addReward(size_t doer);
@@ -86,9 +93,13 @@ public:
 private:
   bool done_[KID_COUNT][JOB_COUNT]{};
   uint32_t rewards_[KID_COUNT]{};
+  InternetOverride internet_override_[KID_COUNT]{};
   uint32_t job_day_ = 0;
   Preferences prefs_;
   Preferences prize_prefs_;
+  Preferences net_prefs_;
+  void loadInternetOverrides();
+  void persistInternetOverride(size_t kid);
   PrizeDef prizes_[PRIZE_MAX]{};
   size_t prize_count_ = 0;
   Splash splash_{};

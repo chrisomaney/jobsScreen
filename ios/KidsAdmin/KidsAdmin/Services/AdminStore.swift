@@ -1,0 +1,265 @@
+import Foundation
+import Combine
+
+@MainActor
+final class AdminStore: ObservableObject {
+    @Published var connectionLabel = "Offline"
+    @Published var connected = false
+    @Published var status: [String: KidLiveStatus] = [:]
+    @Published var jobs: [JobItem] = []
+    @Published var jobPoints: [String: Int] = [:]
+    @Published var expBundle: Int = 0
+    @Published var customSlotsFree: Int? = nil
+    @Published var commonInternetOn = false
+    @Published var lastError: String?
+
+    private var settings: SettingsStore?
+    private let mqtt = MqttClient()
+    private var rules: [[String: Any]] = []
+
+    init() {
+        for kid in AdminKid.all {
+            status[kid.slug] = KidLiveStatus()
+        }
+    }
+
+    func attach(settings: SettingsStore) {
+        self.settings = settings
+        mqtt.onState = { [weak self] state in
+            Task { @MainActor in
+                guard let self else { return }
+                switch state {
+                case .disconnected:
+                    self.connected = false
+                    self.connectionLabel = "Offline"
+                case .connecting:
+                    self.connected = false
+                    self.connectionLabel = "Connecting…"
+                case .connected:
+                    self.connected = true
+                    self.connectionLabel = "Connected"
+                    self.lastError = nil
+                case .failed(let msg):
+                    self.connected = false
+                    self.connectionLabel = "Error"
+                    self.lastError = msg
+                }
+            }
+        }
+        mqtt.onMessage = { [weak self] topic, data in
+            Task { @MainActor in
+                self?.handle(topic: topic, data: data)
+            }
+        }
+    }
+
+    func connect() {
+        guard let settings else { return }
+        mqtt.connect(urlString: settings.broker, username: settings.username, password: settings.password)
+        var topics = [
+            "kids/config/state",
+            "kids/rewards/rules/state",
+            "kids/rewards/catalog",
+            "kids/common/internet",
+        ]
+        for kid in AdminKid.all {
+            topics.append("kids/\(kid.slug)/progress")
+            topics.append("kids/\(kid.slug)/rewards/tally")
+            topics.append("kids/\(kid.slug)/internet")
+        }
+        mqtt.subscribe(topics)
+    }
+
+    func disconnect() {
+        mqtt.disconnect()
+    }
+
+    // MARK: - Internet
+
+    func setInternet(slug: String, mode: InternetMode) {
+        mqtt.publish("kids/\(slug)/internet/set", payload: mode.rawValue, retain: false)
+        if var s = status[slug] {
+            s.override = mode
+            if mode == .on { s.internetOn = true }
+            if mode == .off { s.internetOn = false }
+            status[slug] = s
+        }
+    }
+
+    func setCommonInternet(on: Bool) {
+        mqtt.publish("kids/common/internet/set", payload: on ? "on" : "off", retain: false)
+        commonInternetOn = on
+    }
+
+    // MARK: - Points / behaviour
+
+    func adjustPoints(slug: String, points: Int) {
+        guard points != 0 else { return }
+        let body: [String: Any] = ["kid": slug, "points": points]
+        publishJSON("kids/rewards/bonus/set", body)
+    }
+
+    func sendBehaviour(slug: String, points: Int, title: String, message: String,
+                       panel: Bool, tv: Bool, seconds: Int) {
+        let body: [String: Any] = [
+            "kid": slug,
+            "points": points,
+            "behaviour": true,
+            "title": title,
+            "message": message,
+            "panel": panel,
+            "tv": tv,
+            "seconds": seconds,
+        ]
+        publishJSON("kids/rewards/bonus/set", body)
+    }
+
+    // MARK: - Jobs / expectations
+
+    func addItem(label: String, cat: String, detail: String, required: Bool, points: Int?) {
+        var add: [String: Any] = [
+            "label": label,
+            "cat": cat,
+            "required": required,
+            "kids": AdminKid.all.map(\.slug),
+        ]
+        if !detail.isEmpty { add["detail"] = detail }
+        publishJSON("kids/config/set", ["add": add])
+        if cat == "paid", let points {
+            // Points applied after config/state lists the new id (best-effort by label).
+            pendingPaidPoints = (label, points)
+        }
+    }
+
+    func saveJob(_ job: JobItem) {
+        let fields: [String: Any] = [
+            "label": job.label,
+            "detail": job.detail,
+            "cat": job.cat,
+            "required": job.required,
+            "kids": job.kids,
+        ]
+        publishJSON("kids/config/set", ["jobs": [job.id: fields]])
+    }
+
+    func removeJob(id: String) {
+        publishJSON("kids/config/set", ["remove": [id]])
+    }
+
+    func savePoints() {
+        // Force expectation items to 0.
+        for j in jobs where j.cat != "paid" {
+            jobPoints[j.id] = 0
+        }
+        let body: [String: Any] = [
+            "expectations_complete_points": expBundle,
+            "job_points": jobPoints,
+            "rules": rules,
+        ]
+        publishJSON("kids/rewards/rules/set", body)
+    }
+
+    private var pendingPaidPoints: (String, Int)?
+
+    // MARK: - Incoming
+
+    private func handle(topic: String, data: Data) {
+        let text = String(data: data, encoding: .utf8) ?? ""
+
+        if topic == "kids/common/internet" {
+            commonInternetOn = (text == "on")
+            return
+        }
+
+        if topic == "kids/config/state" {
+            parseConfig(data)
+            return
+        }
+        if topic == "kids/rewards/rules/state" {
+            parseRules(data)
+            return
+        }
+
+        for kid in AdminKid.all {
+            if topic == "kids/\(kid.slug)/rewards/tally" {
+                var s = status[kid.slug] ?? KidLiveStatus()
+                s.tally = Int(text) ?? 0
+                status[kid.slug] = s
+            }
+            if topic == "kids/\(kid.slug)/internet" {
+                var s = status[kid.slug] ?? KidLiveStatus()
+                s.internetOn = (text == "on")
+                status[kid.slug] = s
+            }
+            if topic == "kids/\(kid.slug)/progress" {
+                parseProgress(slug: kid.slug, data: data)
+            }
+        }
+    }
+
+    private func parseProgress(slug: String, data: Data) {
+        guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+        var s = status[slug] ?? KidLiveStatus()
+        if let rewards = obj["rewards"] as? Int { s.tally = rewards }
+        if let internet = obj["internet"] as? Bool { s.internetOn = internet }
+        if let jobsReady = obj["jobs_ready"] as? Bool { s.jobsReady = jobsReady }
+        if let pct = obj["pct"] as? Int { s.pct = pct }
+        if let ov = obj["override"] as? String, let mode = InternetMode(rawValue: ov) {
+            s.override = mode
+        }
+        status[slug] = s
+    }
+
+    private func parseConfig(_ data: Data) {
+        guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+        customSlotsFree = obj["customSlotsFree"] as? Int
+        let arr = obj["jobs"] as? [[String: Any]] ?? []
+        let prev = Set(jobs.map(\.id))
+        jobs = arr.compactMap { j in
+            guard let id = j["id"] as? String else { return nil }
+            return JobItem(
+                id: id,
+                label: (j["label"] as? String) ?? id,
+                cat: (j["cat"] as? String) == "paid" ? "paid" : "expectation",
+                required: (j["required"] as? Bool) ?? true,
+                custom: (j["custom"] as? Bool) ?? false,
+                detail: (j["detail"] as? String) ?? "",
+                kids: (j["kids"] as? [String]) ?? []
+            )
+        }
+        for j in jobs {
+            if jobPoints[j.id] == nil {
+                jobPoints[j.id] = j.cat == "paid" ? 1 : 0
+            }
+        }
+        if let pending = pendingPaidPoints {
+            if let created = jobs.first(where: { !prev.contains($0.id) && $0.label == pending.0 && $0.cat == "paid" }) {
+                jobPoints[created.id] = pending.1
+                savePoints()
+                pendingPaidPoints = nil
+            }
+        }
+    }
+
+    private func parseRules(_ data: Data) {
+        guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+        if let pts = obj["job_points"] as? [String: Any] {
+            for (k, v) in pts {
+                if let n = v as? Int { jobPoints[k] = n }
+                else if let n = v as? NSNumber { jobPoints[k] = n.intValue }
+            }
+        }
+        if let bundle = obj["expectations_complete_points"] as? Int {
+            expBundle = bundle
+        } else if let n = obj["expectations_complete_points"] as? NSNumber {
+            expBundle = n.intValue
+        }
+        rules = obj["rules"] as? [[String: Any]] ?? []
+    }
+
+    private func publishJSON(_ topic: String, _ object: [String: Any]) {
+        guard let data = try? JSONSerialization.data(withJSONObject: object),
+              let str = String(data: data, encoding: .utf8) else { return }
+        mqtt.publish(topic, payload: str, retain: false)
+    }
+}

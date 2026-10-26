@@ -108,7 +108,9 @@ static const int DAILY_RESET_MINUTE = 0;
 // MQTT topic layout (all retained so iOS admin + HA see last state)
 //
 //   kids/{slug}/job/{job_id}/state     payload: "done" | "todo"
-//   kids/{slug}/internet               payload: "on" | "off"  (own list complete)
+//   kids/{slug}/internet               payload: "on" | "off"  (effective unlock)
+//   kids/{slug}/internet/set           admin → "on" | "off" | "auto" (parent override)
+//   kids/common/internet(/set)         shared profile force on/off
 //   kids/{slug}/progress               payload: JSON {"done":n,"total":m,"pct":p}
 //   kids/{slug}/rewards/tally          payload: integer count (help credits)
 //   kids/rewards/event                 payload: JSON doer/owner/job (not retained)
