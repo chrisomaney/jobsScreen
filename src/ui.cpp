@@ -614,7 +614,7 @@ void AppUi::updateHomeRemainders() {
       continue;
     }
     const size_t left = state_->remainingCount(i);
-    const bool ready = state_->internetReady(i);
+    const bool ready = state_->internetEffective(i);
     char buf[64];
     if (left == 0) {
       snprintf(buf, sizeof(buf), "all done - internet on  " LV_SYMBOL_BULLET "  rewards %lu",
@@ -735,7 +735,7 @@ void AppUi::updateKidHeader() {
            static_cast<unsigned>(cat_total));
   lv_label_set_text(progress_label_, buf);
 
-  const bool ready = state_->internetReady(active_kid_);
+  const bool ready = state_->internetEffective(active_kid_);
   lv_obj_set_style_bg_color(internet_badge_, c(ready ? COL_DONE : COL_BTN), 0);
   lv_label_set_text(badge_label_, ready ? "Internet ON" : "Internet OFF");
 }
@@ -785,7 +785,7 @@ void AppUi::rebuildNotDoneList() {
 
     char hdr_txt[64];
     snprintf(hdr_txt, sizeof(hdr_txt), "%s's list - %u left (%s)", KIDS[k].name,
-             static_cast<unsigned>(left), state_->internetReady(k) ? "internet on" : "internet locked");
+             static_cast<unsigned>(left), state_->internetEffective(k) ? "internet on" : "internet locked");
     lv_obj_t *hl = make_label(hdr, hdr_txt, &lv_font_montserrat_16, COL_TEXT);
     lv_obj_align(hl, LV_ALIGN_LEFT_MID, 12, 0);
 

@@ -85,7 +85,10 @@ void MqttBridge::ensureConnected() {
   client_.subscribe(MQTT_PANEL_MESSAGE_SET);
   for (size_t k = 0; k < KID_COUNT; ++k) {
     client_.subscribe(topicRewardTally(k).c_str());
+    client_.subscribe((topicInternet(k) + "/set").c_str());
   }
+  // Shared MikroTik profile — admin can force on/off; panel does not auto-manage it.
+  client_.subscribe((String(MQTT_BASE) + "/common/internet/set").c_str());
   publishAll();
   Serial.println("[mqtt] connected");
 }
@@ -104,6 +107,44 @@ void MqttBridge::handleMessage(char *topic, byte *payload, unsigned int length) 
     } else {
       publishConfig();  // nothing changed — still echo so the web app can confirm
     }
+    return;
+  }
+
+  // Parent internet override: kids/{slug}/internet/set  payload on|off|auto
+  for (size_t k = 0; k < KID_COUNT; ++k) {
+    if (t == topicInternet(k) + "/set") {
+      String body;
+      body.reserve(length + 1);
+      for (unsigned int i = 0; i < length; ++i) {
+        body += static_cast<char>(payload[i]);
+      }
+      body.trim();
+      body.toLowerCase();
+      JobState::InternetOverride mode = JobState::InternetOverride::Auto;
+      if (body == "on" || body == "1" || body == "true") {
+        mode = JobState::InternetOverride::On;
+      } else if (body == "off" || body == "0" || body == "false") {
+        mode = JobState::InternetOverride::Off;
+      } else {
+        mode = JobState::InternetOverride::Auto;
+      }
+      state_->setInternetOverride(k, mode);
+      publishKidSummary(k);
+      Serial.printf("[mqtt] internet override %s = %s\n", KIDS[k].slug, body.c_str());
+      return;
+    }
+  }
+  if (t == String(MQTT_BASE) + "/common/internet/set") {
+    String body;
+    body.reserve(length + 1);
+    for (unsigned int i = 0; i < length; ++i) {
+      body += static_cast<char>(payload[i]);
+    }
+    body.trim();
+    body.toLowerCase();
+    const char *val = (body == "on" || body == "1" || body == "true") ? "on" : "off";
+    client_.publish((String(MQTT_BASE) + "/common/internet").c_str(), val, true);
+    Serial.printf("[mqtt] common internet = %s\n", val);
     return;
   }
   if (t == String(MQTT_BASE) + "/cmd/reset_all") {
@@ -174,7 +215,13 @@ void MqttBridge::handleMessage(char *topic, byte *payload, unsigned int length) 
       return;
     }
     const char *slug = doc["kid"] | "";
-    const uint32_t points = doc["points"] | 0;
+    const int32_t points = doc["points"] | 0;
+    const char *title = doc["title"] | "";
+    const char *message = doc["message"] | "";
+    const bool behaviour = doc["behaviour"] | false;
+    const bool show_panel = doc["panel"] | behaviour;
+    const bool show_tv = doc["tv"] | behaviour;
+    const uint32_t seconds = doc["seconds"] | 12;
     size_t kid = KID_COUNT;
     for (size_t i = 0; i < KID_COUNT; ++i) {
       if (strcmp(KIDS[i].slug, slug) == 0) {
@@ -186,11 +233,22 @@ void MqttBridge::handleMessage(char *topic, byte *payload, unsigned int length) 
       return;
     }
     const uint32_t before = state_->rewardTally(kid);
-    state_->addBonus(kid, points);
+    // Splash on panel for plain ±; Behaviour uses custom title/message overlays.
+    state_->adjustPoints(kid, points, !behaviour);
     const uint32_t after = state_->rewardTally(kid);
     publishRewardTally(kid);
     publishBonus(kid, points, before, after);
-    publishCelebrateBonus(kid, points, after);
+    if (behaviour) {
+      if (show_panel && message[0] && rewards_) {
+        const char *pt = title[0] ? title : (points > 0 ? "Great behaviour!" : "Behaviour note");
+        rewards_->setPanelMessage(pt, message, seconds);
+      }
+      if (show_tv) {
+        publishCelebrateBehaviour(kid, points, title, message, after);
+      }
+    } else if (points > 0) {
+      publishCelebrateBonus(kid, static_cast<uint32_t>(points), after);
+    }
     return;
   }
 
@@ -236,7 +294,7 @@ void MqttBridge::publishKidSummary(size_t kid) {
     return;
   }
 
-  const bool ready = state_->internetReady(kid);
+  const bool ready = state_->internetEffective(kid);
   client_.publish(topicInternet(kid).c_str(), ready ? "on" : "off", true);
 
   JsonDocument doc;
@@ -249,6 +307,11 @@ void MqttBridge::publishKidSummary(size_t kid) {
   doc["required_total"] = req_total;
   doc["pct"] = req_total ? (req_done * 100) / req_total : 100;
   doc["internet"] = ready;
+  doc["jobs_ready"] = state_->internetReady(kid);
+  const auto ov = state_->internetOverride(kid);
+  doc["override"] = ov == JobState::InternetOverride::On    ? "on"
+                    : ov == JobState::InternetOverride::Off ? "off"
+                                                            : "auto";
   doc["name"] = KIDS[kid].name;
   doc["rewards"] = state_->rewardTally(kid);
 
@@ -326,7 +389,7 @@ void MqttBridge::publishClaim(size_t kid, size_t prize_index, uint32_t before, u
   client_.publish(MQTT_CLAIM_TOPIC, json.c_str(), false);
 }
 
-void MqttBridge::publishBonus(size_t kid, uint32_t points, uint32_t before, uint32_t after) {
+void MqttBridge::publishBonus(size_t kid, int32_t points, uint32_t before, uint32_t after) {
   if (!client_.connected()) {
     return;
   }
@@ -368,6 +431,34 @@ void MqttBridge::publishCelebrateBonus(size_t kid, uint32_t points, uint32_t aft
   doc["title"] = "BONUS!";
   char sub[48];
   snprintf(sub, sizeof(sub), "+%lu points", static_cast<unsigned long>(points));
+  doc["subtitle"] = sub;
+  doc["points"] = points;
+  doc["tally_after"] = after;
+  doc["ts"] = millis();
+  String json;
+  serializeJson(doc, json);
+  client_.publish(MQTT_CELEBRATE_TOPIC, json.c_str(), false);
+}
+
+void MqttBridge::publishCelebrateBehaviour(size_t kid, int32_t points, const char *title,
+                                           const char *message, uint32_t after) {
+  if (!client_.connected()) {
+    return;
+  }
+  JsonDocument doc;
+  doc["type"] = points >= 0 ? "behaviour" : "penalty";
+  doc["kid"] = KIDS[kid].slug;
+  if (title && title[0]) {
+    doc["title"] = title;
+  } else {
+    doc["title"] = points >= 0 ? "GREAT BEHAVIOUR!" : "BEHAVIOUR NOTE";
+  }
+  char sub[160];
+  if (message && message[0]) {
+    snprintf(sub, sizeof(sub), "%s  (%+ld pts)", message, static_cast<long>(points));
+  } else {
+    snprintf(sub, sizeof(sub), "%+ld points", static_cast<long>(points));
+  }
   doc["subtitle"] = sub;
   doc["points"] = points;
   doc["tally_after"] = after;

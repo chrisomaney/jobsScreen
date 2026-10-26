@@ -26,9 +26,10 @@ public:
   static JobCategory jobCategory(size_t job);
 
   // Apply config JSON from the web app. Supports:
-  //   {"jobs":{"<id>":{"kids":[...],"required":true,"label":"...","cat":"paid"}}}
+  //   {"jobs":{"<id>":{"kids":[...],"required":true,"label":"...","detail":"...","cat":"paid"}}}
   //   {"add":{"label":"pack lunch","cat":"expectation","required":true,"kids":["jax"]}}
   //   {"remove":["custom_0"]}
+  // Built-ins accept label/detail/cat overrides (saved to NVS). Custom slots only for add/remove.
   // Partial updates allowed; unknown ids ignored. Returns true if anything changed.
   bool applyConfigJson(const char *json, size_t len);
   // Full config + kid/job catalogue for the web app (kids/config/state).
@@ -45,7 +46,14 @@ public:
   size_t remainingCount(size_t kid) const { return assignedCount(kid) - doneCount(kid); }
   size_t requiredTotal(size_t kid) const;
   size_t requiredDoneCount(size_t kid) const;
-  bool internetReady(size_t kid) const;
+  bool internetReady(size_t kid) const;  // based on required jobs only
+
+  // Parent override for MikroTik unlock. Auto = follow internetReady().
+  enum class InternetOverride : uint8_t { Auto = 0, On = 1, Off = 2 };
+  InternetOverride internetOverride(size_t kid) const;
+  void setInternetOverride(size_t kid, InternetOverride mode);
+  // Effective on/off published to kids/{slug}/internet (override wins over jobs).
+  bool internetEffective(size_t kid) const;
 
   uint32_t rewardTally(size_t kid) const;
   void addReward(size_t doer);
@@ -53,6 +61,8 @@ public:
   void addBonus(size_t kid, uint32_t points);
   // Add points without a splash (scheduled rules); still bumps revision.
   void addPoints(size_t kid, uint32_t points);
+  // Signed adjust (negative = take points off). Clamps at 0. Optional splash.
+  void adjustPoints(size_t kid, int32_t delta, bool splash);
   void resetRewards();
   static int findJobIndex(const char *id);
 
@@ -83,9 +93,13 @@ public:
 private:
   bool done_[KID_COUNT][JOB_COUNT]{};
   uint32_t rewards_[KID_COUNT]{};
+  InternetOverride internet_override_[KID_COUNT]{};
   uint32_t job_day_ = 0;
   Preferences prefs_;
   Preferences prize_prefs_;
+  Preferences net_prefs_;
+  void loadInternetOverrides();
+  void persistInternetOverride(size_t kid);
   PrizeDef prizes_[PRIZE_MAX]{};
   size_t prize_count_ = 0;
   Splash splash_{};

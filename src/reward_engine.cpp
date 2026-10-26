@@ -81,12 +81,27 @@ uint32_t RewardEngine::awardForKid(const RewardRule &r, size_t kid) const {
     case RewardRuleKind::Flat:
       return r.points;
     case RewardRuleKind::JobSum: {
+      // Paid jobs: per-item points. Expectations: one bundle if all assigned are done.
       uint32_t sum = 0;
+      bool any_exp = false;
+      bool all_exp_done = true;
       for (size_t j = 0; j < JOB_COUNT; ++j) {
-        if (!JobState::isAssigned(kid, j) || !state_->isDone(kid, j)) {
+        if (!JobState::isAssigned(kid, j) || !JobState::isDefined(j)) {
           continue;
         }
-        sum += job_points_[j];
+        if (JobState::jobCategory(j) == JobCategory::Expectation) {
+          any_exp = true;
+          if (!state_->isDone(kid, j)) {
+            all_exp_done = false;
+          }
+          continue;  // never per-item for expectations
+        }
+        if (state_->isDone(kid, j)) {
+          sum += job_points_[j];
+        }
+      }
+      if (any_exp && all_exp_done) {
+        sum += expectations_complete_points_;
       }
       return sum;
     }
@@ -98,6 +113,11 @@ uint32_t RewardEngine::awardForKid(const RewardRule &r, size_t kid) const {
       if (!state_->isDone(kid, static_cast<size_t>(j))) {
         return 0;
       }
+      // Expectations never pay per-item via a Job rule; use the bundle field instead.
+      if (JobState::jobCategory(static_cast<size_t>(j)) == JobCategory::Expectation) {
+        return 0;
+      }
+      // Prefer rule points when set; otherwise the Jobs table (0 allowed).
       return r.points ? r.points : job_points_[j];
     }
     default:
@@ -191,11 +211,10 @@ void RewardEngine::loadNv() {
     rule_count_ = 0;
   }
   for (size_t j = 0; j < JOB_COUNT; ++j) {
+    // Default 1 for paid-style payouts; 0 is allowed (e.g. expectation items).
     job_points_[j] = prefs_.getUShort((String("jp") + j).c_str(), 1);
-    if (job_points_[j] == 0) {
-      job_points_[j] = 1;
-    }
   }
+  expectations_complete_points_ = prefs_.getUShort("exp_pts", 0);
   memset(rules_, 0, sizeof(rules_));
   for (size_t i = 0; i < rule_count_; ++i) {
     RewardRule &r = rules_[i];
@@ -220,6 +239,7 @@ void RewardEngine::loadNv() {
 
 void RewardEngine::saveNv() {
   prefs_.putUChar("rc", static_cast<uint8_t>(rule_count_));
+  prefs_.putUShort("exp_pts", expectations_complete_points_);
   for (size_t j = 0; j < JOB_COUNT; ++j) {
     prefs_.putUShort((String("jp") + j).c_str(), job_points_[j]);
   }
@@ -247,9 +267,16 @@ bool RewardEngine::applyRulesJson(const char *json) {
     return false;
   }
 
-  if (doc["job_points"].is<JsonObject>()) {
+  const bool has_exp = !doc["expectations_complete_points"].isNull();
+  if (has_exp) {
+    expectations_complete_points_ = doc["expectations_complete_points"].as<uint16_t>();
+  }
+
+  const bool has_jp = doc["job_points"].is<JsonObject>();
+  if (has_jp) {
     for (size_t j = 0; j < JOB_COUNT; ++j) {
-      job_points_[j] = 1;
+      // Expectations default to 0 (bundle only); paid default to 1.
+      job_points_[j] = JobState::jobCategory(j) == JobCategory::Expectation ? 0 : 1;
     }
     JsonObject jp = doc["job_points"].as<JsonObject>();
     for (JsonPair kv : jp) {
@@ -257,15 +284,17 @@ bool RewardEngine::applyRulesJson(const char *json) {
       if (j < 0) {
         continue;
       }
-      uint16_t pts = kv.value().as<uint16_t>();
-      if (pts == 0) {
-        pts = 1;
-      }
-      job_points_[j] = pts;
+      job_points_[j] = kv.value().as<uint16_t>();
     }
   }
 
   if (!doc["rules"].is<JsonArray>()) {
+    // Allow points-only updates (no rules array) from admin Expectations/Jobs tabs.
+    if (has_jp || has_exp) {
+      saveNv();
+      bump();
+      return true;
+    }
     return false;
   }
 
@@ -323,6 +352,7 @@ bool RewardEngine::applyRulesJson(const char *json) {
 
 String RewardEngine::rulesStateJson() const {
   JsonDocument doc;
+  doc["expectations_complete_points"] = expectations_complete_points_;
   JsonObject jp = doc["job_points"].to<JsonObject>();
   for (size_t j = 0; j < JOB_COUNT; ++j) {
     if (!JobState::isDefined(j)) {

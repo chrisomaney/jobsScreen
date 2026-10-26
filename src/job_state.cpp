@@ -13,6 +13,13 @@ char g_custom_detail[MAX_CUSTOM_JOBS][JOB_DETAIL_MAX];
 JobCategory g_custom_cat[MAX_CUSTOM_JOBS];
 char g_custom_ids[MAX_CUSTOM_JOBS][12];  // "custom_0" … "custom_7"
 
+// Built-in edits from the web app (empty label = use JOBS[] compile-time default).
+char g_ov_label[BUILTIN_JOB_COUNT][JOB_LABEL_MAX];
+char g_ov_detail[BUILTIN_JOB_COUNT][JOB_DETAIL_MAX];
+bool g_ov_detail_set[BUILTIN_JOB_COUNT];
+JobCategory g_ov_cat[BUILTIN_JOB_COUNT];
+bool g_ov_cat_set[BUILTIN_JOB_COUNT];
+
 size_t customIndex(size_t job) { return job - BUILTIN_JOB_COUNT; }
 
 void initCustomIds() {
@@ -21,6 +28,13 @@ void initCustomIds() {
     g_custom_label[i][0] = '\0';
     g_custom_detail[i][0] = '\0';
     g_custom_cat[i] = JobCategory::Expectation;
+  }
+  for (size_t i = 0; i < BUILTIN_JOB_COUNT; ++i) {
+    g_ov_label[i][0] = '\0';
+    g_ov_detail[i][0] = '\0';
+    g_ov_detail_set[i] = false;
+    g_ov_cat[i] = JOBS[i].category;
+    g_ov_cat_set[i] = false;
   }
 }
 
@@ -115,7 +129,7 @@ bool applyJobFields(size_t j, JsonObjectConst o) {
     if (o["label"].is<const char *>()) {
       char buf[JOB_LABEL_MAX];
       copyTrunc(buf, sizeof(buf), o["label"].as<const char *>());
-      if (strcmp(buf, g_custom_label[ci]) != 0) {
+      if (buf[0] && strcmp(buf, g_custom_label[ci]) != 0) {
         memcpy(g_custom_label[ci], buf, JOB_LABEL_MAX);
         changed = true;
       }
@@ -134,6 +148,37 @@ bool applyJobFields(size_t j, JsonObjectConst o) {
         g_custom_cat[ci] = cat;
         changed = true;
       }
+    }
+    return changed;
+  }
+
+  // Built-in overrides (name / hint / expectation↔job).
+  if (j >= BUILTIN_JOB_COUNT) {
+    return changed;
+  }
+  if (o["label"].is<const char *>()) {
+    char buf[JOB_LABEL_MAX];
+    copyTrunc(buf, sizeof(buf), o["label"].as<const char *>());
+    if (buf[0] && strcmp(buf, g_ov_label[j]) != 0) {
+      memcpy(g_ov_label[j], buf, JOB_LABEL_MAX);
+      changed = true;
+    }
+  }
+  if (o["detail"].is<const char *>()) {
+    char buf[JOB_DETAIL_MAX];
+    copyTrunc(buf, sizeof(buf), o["detail"].as<const char *>());
+    if (!g_ov_detail_set[j] || strcmp(buf, g_ov_detail[j]) != 0) {
+      memcpy(g_ov_detail[j], buf, JOB_DETAIL_MAX);
+      g_ov_detail_set[j] = true;
+      changed = true;
+    }
+  }
+  if (o["cat"].is<const char *>()) {
+    const JobCategory cat = parseCat(o["cat"].as<const char *>());
+    if (!g_ov_cat_set[j] || cat != g_ov_cat[j]) {
+      g_ov_cat[j] = cat;
+      g_ov_cat_set[j] = true;
+      changed = true;
     }
   }
   return changed;
@@ -190,30 +235,39 @@ const char *JobState::jobLabel(size_t job) {
   if (job >= JOB_COUNT) {
     return "";
   }
-  if (!isCustom(job)) {
-    return JOBS[job].label;
+  if (isCustom(job)) {
+    return g_custom_label[customIndex(job)];
   }
-  return g_custom_label[customIndex(job)];
+  if (job < BUILTIN_JOB_COUNT && g_ov_label[job][0]) {
+    return g_ov_label[job];
+  }
+  return JOBS[job].label;
 }
 
 const char *JobState::jobDetail(size_t job) {
   if (job >= JOB_COUNT) {
     return "";
   }
-  if (!isCustom(job)) {
-    return JOBS[job].detail;
+  if (isCustom(job)) {
+    return g_custom_detail[customIndex(job)];
   }
-  return g_custom_detail[customIndex(job)];
+  if (job < BUILTIN_JOB_COUNT && g_ov_detail_set[job]) {
+    return g_ov_detail[job];
+  }
+  return JOBS[job].detail;
 }
 
 JobCategory JobState::jobCategory(size_t job) {
   if (job >= JOB_COUNT) {
     return JobCategory::Expectation;
   }
-  if (!isCustom(job)) {
-    return JOBS[job].category;
+  if (isCustom(job)) {
+    return g_custom_cat[customIndex(job)];
   }
-  return g_custom_cat[customIndex(job)];
+  if (job < BUILTIN_JOB_COUNT && g_ov_cat_set[job]) {
+    return g_ov_cat[job];
+  }
+  return JOBS[job].category;
 }
 
 int JobState::allocCustomSlot() {
@@ -264,6 +318,7 @@ void JobState::begin() {
     loadPrizeDefaults();
     savePrizeCatalog();
   }
+  loadInternetOverrides();
   job_day_ = prefs_.getUInt("day", 0);
 }
 
@@ -330,11 +385,9 @@ void JobState::persistConfig() {
       }
     }
     o["required"] = g_required[j];
-    if (isCustom(j)) {
-      o["label"] = jobLabel(j);
-      o["cat"] = jobCategory(j) == JobCategory::Paid ? "paid" : "expectation";
-      o["detail"] = jobDetail(j);
-    }
+    o["label"] = jobLabel(j);
+    o["cat"] = jobCategory(j) == JobCategory::Paid ? "paid" : "expectation";
+    o["detail"] = jobDetail(j);
   }
   String out;
   serializeJson(doc, out);
@@ -595,6 +648,56 @@ bool JobState::internetReady(size_t kid) const {
   return requiredDoneCount(kid) >= requiredTotal(kid);
 }
 
+JobState::InternetOverride JobState::internetOverride(size_t kid) const {
+  if (kid >= KID_COUNT) {
+    return InternetOverride::Auto;
+  }
+  return internet_override_[kid];
+}
+
+void JobState::setInternetOverride(size_t kid, InternetOverride mode) {
+  if (kid >= KID_COUNT) {
+    return;
+  }
+  if (internet_override_[kid] == mode) {
+    return;
+  }
+  internet_override_[kid] = mode;
+  persistInternetOverride(kid);
+  bump();
+}
+
+bool JobState::internetEffective(size_t kid) const {
+  if (kid >= KID_COUNT) {
+    return false;
+  }
+  switch (internet_override_[kid]) {
+    case InternetOverride::On:
+      return true;
+    case InternetOverride::Off:
+      return false;
+    case InternetOverride::Auto:
+    default:
+      return internetReady(kid);
+  }
+}
+
+void JobState::loadInternetOverrides() {
+  net_prefs_.begin("netov", false);
+  for (size_t k = 0; k < KID_COUNT; ++k) {
+    const uint8_t v = net_prefs_.getUChar((String("o") + k).c_str(), 0);
+    internet_override_[k] =
+        v == 1 ? InternetOverride::On : v == 2 ? InternetOverride::Off : InternetOverride::Auto;
+  }
+}
+
+void JobState::persistInternetOverride(size_t kid) {
+  if (kid >= KID_COUNT) {
+    return;
+  }
+  net_prefs_.putUChar((String("o") + kid).c_str(), static_cast<uint8_t>(internet_override_[kid]));
+}
+
 uint32_t JobState::rewardTally(size_t kid) const {
   if (kid >= KID_COUNT) {
     return 0;
@@ -643,6 +746,32 @@ void JobState::addPoints(size_t kid, uint32_t points) {
   rewards_[kid] += points;
   persistReward(kid);
   bump();
+}
+
+void JobState::adjustPoints(size_t kid, int32_t delta, bool splash) {
+  if (kid >= KID_COUNT || delta == 0) {
+    return;
+  }
+  int64_t next = static_cast<int64_t>(rewards_[kid]) + delta;
+  if (next < 0) {
+    next = 0;
+  }
+  rewards_[kid] = static_cast<uint32_t>(next);
+  persistReward(kid);
+  bump();
+  if (!splash) {
+    return;
+  }
+  char sub[64];
+  if (delta > 0) {
+    snprintf(sub, sizeof(sub), "+%ld points!  Now %lu", static_cast<long>(delta),
+             static_cast<unsigned long>(rewards_[kid]));
+    queueSplash(SplashKind::Bonus, kid, "BONUS POINTS!", sub);
+  } else {
+    snprintf(sub, sizeof(sub), "%ld points  Now %lu", static_cast<long>(delta),
+             static_cast<unsigned long>(rewards_[kid]));
+    queueSplash(SplashKind::KeepGoing, kid, "Points removed", sub);
+  }
 }
 
 int JobState::findJobIndex(const char *id) { return jobIndex(id); }

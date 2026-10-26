@@ -3,7 +3,7 @@
 | File | Purpose |
 |------|---------|
 | `index.html` | **Jobs Chooser** — who does which job on the jobs panel |
-| `rewards-admin.html` | **Rewards HQ** — prizes, bonus, per-job points, scheduled rules, panel messages |
+| `rewards-admin.html` | **Rewards HQ** — prizes, ± points, add/edit expectations & jobs, behaviour (panel+TV), schedules |
 | `rewards-celebrate.html` | **Celebrate** — full-screen WINNER/BONUS for phone or Android TV browser |
 
 Copy into Home Assistant `www` (e.g. `/config/www/kids-jobs/` and `/config/www/kids-rewards/`).
