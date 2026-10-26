@@ -26,9 +26,10 @@ public:
   static JobCategory jobCategory(size_t job);
 
   // Apply config JSON from the web app. Supports:
-  //   {"jobs":{"<id>":{"kids":[...],"required":true,"label":"...","cat":"paid"}}}
+  //   {"jobs":{"<id>":{"kids":[...],"required":true,"label":"...","detail":"...","cat":"paid"}}}
   //   {"add":{"label":"pack lunch","cat":"expectation","required":true,"kids":["jax"]}}
   //   {"remove":["custom_0"]}
+  // Built-ins accept label/detail/cat overrides (saved to NVS). Custom slots only for add/remove.
   // Partial updates allowed; unknown ids ignored. Returns true if anything changed.
   bool applyConfigJson(const char *json, size_t len);
   // Full config + kid/job catalogue for the web app (kids/config/state).

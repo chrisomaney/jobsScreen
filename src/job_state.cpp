@@ -13,6 +13,13 @@ char g_custom_detail[MAX_CUSTOM_JOBS][JOB_DETAIL_MAX];
 JobCategory g_custom_cat[MAX_CUSTOM_JOBS];
 char g_custom_ids[MAX_CUSTOM_JOBS][12];  // "custom_0" … "custom_7"
 
+// Built-in edits from the web app (empty label = use JOBS[] compile-time default).
+char g_ov_label[BUILTIN_JOB_COUNT][JOB_LABEL_MAX];
+char g_ov_detail[BUILTIN_JOB_COUNT][JOB_DETAIL_MAX];
+bool g_ov_detail_set[BUILTIN_JOB_COUNT];
+JobCategory g_ov_cat[BUILTIN_JOB_COUNT];
+bool g_ov_cat_set[BUILTIN_JOB_COUNT];
+
 size_t customIndex(size_t job) { return job - BUILTIN_JOB_COUNT; }
 
 void initCustomIds() {
@@ -21,6 +28,13 @@ void initCustomIds() {
     g_custom_label[i][0] = '\0';
     g_custom_detail[i][0] = '\0';
     g_custom_cat[i] = JobCategory::Expectation;
+  }
+  for (size_t i = 0; i < BUILTIN_JOB_COUNT; ++i) {
+    g_ov_label[i][0] = '\0';
+    g_ov_detail[i][0] = '\0';
+    g_ov_detail_set[i] = false;
+    g_ov_cat[i] = JOBS[i].category;
+    g_ov_cat_set[i] = false;
   }
 }
 
@@ -115,7 +129,7 @@ bool applyJobFields(size_t j, JsonObjectConst o) {
     if (o["label"].is<const char *>()) {
       char buf[JOB_LABEL_MAX];
       copyTrunc(buf, sizeof(buf), o["label"].as<const char *>());
-      if (strcmp(buf, g_custom_label[ci]) != 0) {
+      if (buf[0] && strcmp(buf, g_custom_label[ci]) != 0) {
         memcpy(g_custom_label[ci], buf, JOB_LABEL_MAX);
         changed = true;
       }
@@ -134,6 +148,37 @@ bool applyJobFields(size_t j, JsonObjectConst o) {
         g_custom_cat[ci] = cat;
         changed = true;
       }
+    }
+    return changed;
+  }
+
+  // Built-in overrides (name / hint / expectation↔job).
+  if (j >= BUILTIN_JOB_COUNT) {
+    return changed;
+  }
+  if (o["label"].is<const char *>()) {
+    char buf[JOB_LABEL_MAX];
+    copyTrunc(buf, sizeof(buf), o["label"].as<const char *>());
+    if (buf[0] && strcmp(buf, g_ov_label[j]) != 0) {
+      memcpy(g_ov_label[j], buf, JOB_LABEL_MAX);
+      changed = true;
+    }
+  }
+  if (o["detail"].is<const char *>()) {
+    char buf[JOB_DETAIL_MAX];
+    copyTrunc(buf, sizeof(buf), o["detail"].as<const char *>());
+    if (!g_ov_detail_set[j] || strcmp(buf, g_ov_detail[j]) != 0) {
+      memcpy(g_ov_detail[j], buf, JOB_DETAIL_MAX);
+      g_ov_detail_set[j] = true;
+      changed = true;
+    }
+  }
+  if (o["cat"].is<const char *>()) {
+    const JobCategory cat = parseCat(o["cat"].as<const char *>());
+    if (!g_ov_cat_set[j] || cat != g_ov_cat[j]) {
+      g_ov_cat[j] = cat;
+      g_ov_cat_set[j] = true;
+      changed = true;
     }
   }
   return changed;
@@ -190,30 +235,39 @@ const char *JobState::jobLabel(size_t job) {
   if (job >= JOB_COUNT) {
     return "";
   }
-  if (!isCustom(job)) {
-    return JOBS[job].label;
+  if (isCustom(job)) {
+    return g_custom_label[customIndex(job)];
   }
-  return g_custom_label[customIndex(job)];
+  if (job < BUILTIN_JOB_COUNT && g_ov_label[job][0]) {
+    return g_ov_label[job];
+  }
+  return JOBS[job].label;
 }
 
 const char *JobState::jobDetail(size_t job) {
   if (job >= JOB_COUNT) {
     return "";
   }
-  if (!isCustom(job)) {
-    return JOBS[job].detail;
+  if (isCustom(job)) {
+    return g_custom_detail[customIndex(job)];
   }
-  return g_custom_detail[customIndex(job)];
+  if (job < BUILTIN_JOB_COUNT && g_ov_detail_set[job]) {
+    return g_ov_detail[job];
+  }
+  return JOBS[job].detail;
 }
 
 JobCategory JobState::jobCategory(size_t job) {
   if (job >= JOB_COUNT) {
     return JobCategory::Expectation;
   }
-  if (!isCustom(job)) {
-    return JOBS[job].category;
+  if (isCustom(job)) {
+    return g_custom_cat[customIndex(job)];
   }
-  return g_custom_cat[customIndex(job)];
+  if (job < BUILTIN_JOB_COUNT && g_ov_cat_set[job]) {
+    return g_ov_cat[job];
+  }
+  return JOBS[job].category;
 }
 
 int JobState::allocCustomSlot() {
@@ -330,11 +384,9 @@ void JobState::persistConfig() {
       }
     }
     o["required"] = g_required[j];
-    if (isCustom(j)) {
-      o["label"] = jobLabel(j);
-      o["cat"] = jobCategory(j) == JobCategory::Paid ? "paid" : "expectation";
-      o["detail"] = jobDetail(j);
-    }
+    o["label"] = jobLabel(j);
+    o["cat"] = jobCategory(j) == JobCategory::Paid ? "paid" : "expectation";
+    o["detail"] = jobDetail(j);
   }
   String out;
   serializeJson(doc, out);

@@ -43,6 +43,14 @@
   .tabs button { background: #1E293B; color: var(--muted); }
   .tabs button.on { background: var(--cyan); color: #0B1220; }
   .pm { width: 44px; height: 44px; border-radius: 50%; padding: 0; font-size: 1.3rem; line-height: 1; }
+  .jobcard { border: 1px solid var(--line); border-radius: 14px; padding: 12px; margin: 10px 0; background: #0B1220; }
+  .jobcard .meta { font-size: .75rem; color: var(--muted); margin-top: 2px; }
+  .kidtogs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .kidtogs button { padding: 8px 10px; border-radius: 999px; background: #1E293B; color: var(--muted); border: 2px solid transparent; }
+  .kidtogs button.on { background: #083344; color: var(--cyan); border-color: var(--cyan); }
+  .editbox { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+  .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: #0F172A; border: 2px solid var(--cyan); color: var(--ink); padding: 12px 18px; border-radius: 999px; font-weight: 800; z-index: 20; opacity: 0; pointer-events: none; transition: opacity .2s; }
+  .toast.show { opacity: 1; }
 </style>
 </head>
 <body>
@@ -104,21 +112,44 @@
     <div id="tab-expect" class="hidden">
       <div class="card">
         <h2>Expectations</h2>
-        <p class="hint">No points per item. Kids only earn the bundle below when <strong>all</strong> their assigned expectations are done (used by “sum finished jobs” schedules).</p>
+        <p class="hint">No points per item. Kids earn the bundle when <strong>all</strong> assigned expectations are done. Add, rename, assign kids, or remove custom items here.</p>
         <label>Points when ALL expectations are done</label>
         <input id="expBundle" type="number" min="0" value="0">
-        <h3>Items (0 points each)</h3>
+        <div class="actions"><button class="big" id="saveExpect" style="width:auto">Save bundle points</button></div>
+        <h3>Add expectation</h3>
+        <label>Name</label>
+        <input id="addExpLabel" maxlength="40" placeholder="e.g. pack lunch">
+        <label>Hint (optional)</label>
+        <input id="addExpDetail" maxlength="80" placeholder="Short tip on the panel">
+        <label><input type="checkbox" id="addExpRequired" checked> Needed for internet unlock</label>
+        <div class="actions">
+          <button class="mint" id="addExpBtn">Add expectation</button>
+          <span class="hint" id="expSlots"></span>
+        </div>
+        <h3>Current expectations</h3>
         <div id="expectList"></div>
-        <div class="actions"><button class="big" id="saveExpect">Save expectations points</button></div>
       </div>
     </div>
 
     <div id="tab-jobs" class="hidden">
       <div class="card">
         <h2>Jobs (paid)</h2>
-        <p class="hint">These are the chores kids earn points on one-by-one. Set 0 if a job should not pay.</p>
+        <p class="hint">Chores kids earn points on one-by-one. Add new jobs, edit names/points/who does them, or remove custom ones.</p>
+        <h3>Add job</h3>
+        <label>Name</label>
+        <input id="addJobLabel" maxlength="40" placeholder="e.g. vacuum lounge">
+        <label>Hint (optional)</label>
+        <input id="addJobDetail" maxlength="80" placeholder="Short tip on the panel">
+        <label>Points</label>
+        <input id="addJobPts" type="number" min="0" value="1">
+        <label><input type="checkbox" id="addJobRequired" checked> Needed for internet unlock</label>
+        <div class="actions">
+          <button class="mint" id="addJobBtn">Add job</button>
+          <span class="hint" id="jobSlots"></span>
+        </div>
+        <h3>Current jobs</h3>
         <div id="jobPoints"></div>
-        <div class="actions"><button class="big" id="saveJobsPts">Save job points</button></div>
+        <div class="actions"><button class="big" id="saveJobsPts">Save job points + edits</button></div>
       </div>
     </div>
 
@@ -202,6 +233,7 @@
       </div>
     </div>
   </div>
+  <div class="toast" id="toast"></div>
 
 <script>
 const KIDS = [
@@ -214,9 +246,14 @@ const KIDS = [
 const DAY_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const TABS = ['prizes','points','expect','jobs','behaviour','rules','message'];
 let client = null, catalog = [], jobs = [], jobPoints = {}, rules = [];
-let expBundle = 0;
+let expBundle = 0, customSlotsFree = null, editingId = null;
 const tallies = Object.fromEntries(KIDS.map(k => [k.slug, 0]));
 const $ = id => document.getElementById(id);
+let toastTimer;
+function toast(msg) {
+  const t = $('toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 2600);
+}
 
 function setStatus(ok, text) {
   $('status').className = 'pill ' + (ok ? 'ok' : 'bad');
@@ -244,6 +281,132 @@ function publishAdjust(slug, points) {
   const n = parseInt(points, 10);
   if (!n) return;
   client.publish('kids/rewards/bonus/set', JSON.stringify({ kid: slug, points: n }));
+}
+function publishConfig(payload) {
+  if (!client?.connected) { alert('Connect first'); return false; }
+  client.publish('kids/config/set', JSON.stringify(payload));
+  return true;
+}
+function kidTogsHtml(job) {
+  const set = new Set(job.kids || []);
+  return `<div class="kidtogs" data-kids-for="${escapeHtml(job.id)}">${KIDS.map(k =>
+    `<button type="button" class="${set.has(k.slug)?'on':''}" data-kid="${k.slug}">${escapeHtml(k.name)}</button>`
+  ).join('')}</div>`;
+}
+function jobEditorHtml(j, withPoints) {
+  const open = editingId === j.id;
+  return `
+    <div class="jobcard" data-job="${escapeHtml(j.id)}">
+      <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start">
+        <div>
+          <strong>${escapeHtml(j.label)}</strong>
+          <div class="meta">${escapeHtml(j.id)}${j.custom ? ' · custom' : ''}${j.required ? ' · needed for internet' : ' · optional'}${(j.kids||[]).length ? '' : ' · nobody (hidden)'}</div>
+        </div>
+        <div class="actions" style="margin:0">
+          ${withPoints ? `<input style="width:72px" type="number" min="0" data-jp="${escapeHtml(j.id)}" value="${jobPoints[j.id] ?? 1}">` : '<span class="meta">0 pts</span>'}
+          <button class="ghost" data-edit="${escapeHtml(j.id)}">${open ? 'Close' : 'Edit'}</button>
+        </div>
+      </div>
+      ${open ? `<div class="editbox">
+        <label>Name</label>
+        <input data-elabel value="${escapeHtml(j.label)}" maxlength="40">
+        <label>Hint</label>
+        <input data-edetail value="${escapeHtml(j.detail || '')}" maxlength="80">
+        <label>Type</label>
+        <select data-ecat>
+          <option value="expectation" ${j.cat!=='paid'?'selected':''}>Expectation</option>
+          <option value="paid" ${j.cat==='paid'?'selected':''}>Paid job</option>
+        </select>
+        <label style="margin-top:10px"><input type="checkbox" data-ereq ${j.required?'checked':''}> Needed for internet unlock</label>
+        <label>Who does this</label>
+        ${kidTogsHtml(j)}
+        <div class="actions">
+          <button class="mint" data-savejob="${escapeHtml(j.id)}">Save to panel</button>
+          ${j.custom ? `<button class="pink" data-deljob="${escapeHtml(j.id)}">Remove</button>` : ''}
+        </div>
+      </div>` : ''}
+    </div>`;
+}
+function wireJobCards(root) {
+  root.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => {
+    editingId = editingId === b.dataset.edit ? null : b.dataset.edit;
+    renderExpect(); renderJobPoints();
+  });
+  root.querySelectorAll('.kidtogs button').forEach(b => b.onclick = () => {
+    b.classList.toggle('on');
+  });
+  root.querySelectorAll('[data-savejob]').forEach(b => b.onclick = () => saveJobEdit(b.dataset.savejob));
+  root.querySelectorAll('[data-deljob]').forEach(b => b.onclick = () => {
+    const job = jobs.find(j => j.id === b.dataset.deljob);
+    if (!job?.custom) return;
+    if (!confirm(`Remove “${job.label}” from the panel?`)) return;
+    if (!publishConfig({ remove: [job.id] })) return;
+    toast('Removing…');
+    editingId = null;
+  });
+}
+function saveJobEdit(id) {
+  const card = document.querySelector(`.jobcard[data-job="${CSS.escape(id)}"]`);
+  if (!card) return;
+  const label = card.querySelector('[data-elabel]')?.value.trim();
+  if (!label) return alert('Name required');
+  const detail = card.querySelector('[data-edetail]')?.value.trim() || '';
+  const cat = card.querySelector('[data-ecat]')?.value || 'expectation';
+  const required = !!card.querySelector('[data-ereq]')?.checked;
+  const kids = [...card.querySelectorAll('.kidtogs button.on')].map(b => b.dataset.kid);
+  const payload = { jobs: { [id]: { label, detail, cat, required, kids } } };
+  if (!publishConfig(payload)) return;
+  // Also push points if this is a paid job row with a points field.
+  const ptsInp = card.querySelector('[data-jp]');
+  if (ptsInp) {
+    const v = parseInt(ptsInp.value, 10);
+    jobPoints[id] = Number.isFinite(v) && v >= 0 ? v : 0;
+  }
+  if (cat === 'paid') {
+    // Keep points table in sync after category move.
+    if (jobPoints[id] == null) jobPoints[id] = 1;
+  } else {
+    jobPoints[id] = 0;
+  }
+  pushPointsOnly(false);
+  toast('Saved to panel');
+  editingId = null;
+}
+function addCatalogueItem(cat) {
+  const isPaid = cat === 'paid';
+  const label = $(isPaid ? 'addJobLabel' : 'addExpLabel').value.trim();
+  if (!label) return alert('Enter a name');
+  if (customSlotsFree === 0) return alert('No free slots — remove a custom item first');
+  const detail = $(isPaid ? 'addJobDetail' : 'addExpDetail').value.trim();
+  const required = $(isPaid ? 'addJobRequired' : 'addExpRequired').checked;
+  const payload = {
+    add: {
+      label,
+      cat,
+      required,
+      kids: KIDS.map(k => k.slug),
+    },
+  };
+  if (detail) payload.add.detail = detail;
+  if (!publishConfig(payload)) return;
+  if (isPaid) {
+    // Remember desired points; applied once config/state lists the new id.
+    window.__pendingJobPts = { label, pts: Math.max(0, parseInt($('addJobPts').value,10)||0) };
+    $('addJobLabel').value = '';
+    $('addJobDetail').value = '';
+    $('addJobPts').value = '1';
+    $('addJobRequired').checked = true;
+  } else {
+    $('addExpLabel').value = '';
+    $('addExpDetail').value = '';
+    $('addExpRequired').checked = true;
+  }
+  toast(isPaid ? 'Adding job…' : 'Adding expectation…');
+}
+function updateSlotHints() {
+  const txt = customSlotsFree == null ? '' : customSlotsFree === 0 ? 'No free slots left' : `${customSlotsFree} slot${customSlotsFree===1?'':'s'} free`;
+  if ($('expSlots')) $('expSlots').textContent = txt;
+  if ($('jobSlots')) $('jobSlots').textContent = txt;
 }
 
 function renderPrizes() {
@@ -292,24 +455,24 @@ function renderKids() {
 }
 function renderExpect() {
   $('expBundle').value = expBundle;
+  updateSlotHints();
   const list = expectJobs();
   $('expectList').innerHTML = list.length
-    ? list.map(j => `<div class="jp"><div><strong>${escapeHtml(j.label)}</strong><div class="sub" style="margin:0">${escapeHtml(j.id)} · 0 pts</div></div></div>`).join('')
+    ? list.map(j => jobEditorHtml(j, false)).join('')
     : '<p class="sub">Waiting for kids/config/state…</p>';
+  wireJobCards($('expectList'));
 }
 function renderJobPoints() {
+  updateSlotHints();
   const list = paidJobs();
   if (!list.length) {
     $('jobPoints').innerHTML = jobs.length
-      ? '<p class="sub">No paid jobs yet — mark chores as Jobs in Jobs Chooser.</p>'
+      ? '<p class="sub">No paid jobs yet — add one above.</p>'
       : '<p class="sub">Waiting for kids/config/state from the panel…</p>';
     return;
   }
-  $('jobPoints').innerHTML = list.map(j => `
-    <div class="jp">
-      <div><strong>${escapeHtml(j.label)}</strong><div class="sub" style="margin:0">${escapeHtml(j.id)}</div></div>
-      <input style="width:90px" type="number" min="0" data-jp="${escapeHtml(j.id)}" value="${jobPoints[j.id] ?? 1}">
-    </div>`).join('');
+  $('jobPoints').innerHTML = list.map(j => jobEditorHtml(j, true)).join('');
+  wireJobCards($('jobPoints'));
 }
 function renderRuleJobSelect() {
   const list = paidJobs();
@@ -381,15 +544,15 @@ function pushRules(msg) {
   client.publish('kids/rewards/rules/set', JSON.stringify(rulesPayload()));
   alert(msg || 'Saved to the panel');
 }
-function pushPointsOnly() {
-  if (!client?.connected) return alert('Connect first');
+function pushPointsOnly(showAlert = true) {
+  if (!client?.connected) { if (showAlert) alert('Connect first'); return; }
   collectJobPointsFromDom();
   client.publish('kids/rewards/rules/set', JSON.stringify({
     expectations_complete_points: expBundle,
     job_points: jobPoints,
     rules, // keep existing rules so we don't wipe them
   }));
-  alert('Points saved to the panel');
+  if (showAlert) toast('Points saved to the panel');
 }
 
 function sendBehaviour(forceSign) {
@@ -449,16 +612,32 @@ function connect() {
     if (topic === 'kids/config/state') {
       try {
         const d = JSON.parse(body);
+        customSlotsFree = typeof d.customSlotsFree === 'number' ? d.customSlotsFree : null;
+        const prevIds = new Set(jobs.map(j => j.id));
         jobs = (d.jobs || []).map(j => ({
           id: j.id,
           label: j.label || j.id,
           cat: j.cat === 'paid' ? 'paid' : 'expectation',
+          required: !!j.required,
+          custom: !!j.custom,
+          detail: j.detail || '',
+          kids: Array.isArray(j.kids) ? j.kids.slice() : [],
         }));
         jobs.forEach(j => {
           if (jobPoints[j.id] == null) {
             jobPoints[j.id] = j.cat === 'paid' ? 1 : 0;
           }
         });
+        // Apply points chosen when adding a new paid job.
+        if (window.__pendingJobPts) {
+          const pend = window.__pendingJobPts;
+          const created = jobs.find(j => !prevIds.has(j.id) && j.label === pend.label && j.cat === 'paid');
+          if (created) {
+            jobPoints[created.id] = pend.pts;
+            pushPointsOnly(false);
+            window.__pendingJobPts = null;
+          }
+        }
         renderExpect(); renderJobPoints(); renderRuleJobSelect();
       } catch (_) {}
     }
@@ -519,8 +698,14 @@ $('clearRule').onclick = () => {
   syncRuleKindUi();
 };
 $('saveRules').onclick = () => pushRules('Rules saved to the panel');
-$('saveExpect').onclick = pushPointsOnly;
-$('saveJobsPts').onclick = pushPointsOnly;
+$('saveExpect').onclick = () => pushPointsOnly(true);
+$('saveJobsPts').onclick = () => {
+  // Collect points from open editors, then push rules points.
+  collectJobPointsFromDom();
+  pushPointsOnly(true);
+};
+$('addExpBtn').onclick = () => addCatalogueItem('expectation');
+$('addJobBtn').onclick = () => addCatalogueItem('paid');
 $('behReward').onclick = () => sendBehaviour('+');
 $('behPenalty').onclick = () => sendBehaviour('-');
 $('sendMsg').onclick = () => {
