@@ -174,7 +174,13 @@ void MqttBridge::handleMessage(char *topic, byte *payload, unsigned int length) 
       return;
     }
     const char *slug = doc["kid"] | "";
-    const uint32_t points = doc["points"] | 0;
+    const int32_t points = doc["points"] | 0;
+    const char *title = doc["title"] | "";
+    const char *message = doc["message"] | "";
+    const bool behaviour = doc["behaviour"] | false;
+    const bool show_panel = doc["panel"] | behaviour;
+    const bool show_tv = doc["tv"] | behaviour;
+    const uint32_t seconds = doc["seconds"] | 12;
     size_t kid = KID_COUNT;
     for (size_t i = 0; i < KID_COUNT; ++i) {
       if (strcmp(KIDS[i].slug, slug) == 0) {
@@ -186,11 +192,22 @@ void MqttBridge::handleMessage(char *topic, byte *payload, unsigned int length) 
       return;
     }
     const uint32_t before = state_->rewardTally(kid);
-    state_->addBonus(kid, points);
+    // Splash on panel for plain ±; Behaviour uses custom title/message overlays.
+    state_->adjustPoints(kid, points, !behaviour);
     const uint32_t after = state_->rewardTally(kid);
     publishRewardTally(kid);
     publishBonus(kid, points, before, after);
-    publishCelebrateBonus(kid, points, after);
+    if (behaviour) {
+      if (show_panel && message[0] && rewards_) {
+        const char *pt = title[0] ? title : (points > 0 ? "Great behaviour!" : "Behaviour note");
+        rewards_->setPanelMessage(pt, message, seconds);
+      }
+      if (show_tv) {
+        publishCelebrateBehaviour(kid, points, title, message, after);
+      }
+    } else if (points > 0) {
+      publishCelebrateBonus(kid, static_cast<uint32_t>(points), after);
+    }
     return;
   }
 
@@ -326,7 +343,7 @@ void MqttBridge::publishClaim(size_t kid, size_t prize_index, uint32_t before, u
   client_.publish(MQTT_CLAIM_TOPIC, json.c_str(), false);
 }
 
-void MqttBridge::publishBonus(size_t kid, uint32_t points, uint32_t before, uint32_t after) {
+void MqttBridge::publishBonus(size_t kid, int32_t points, uint32_t before, uint32_t after) {
   if (!client_.connected()) {
     return;
   }
@@ -368,6 +385,34 @@ void MqttBridge::publishCelebrateBonus(size_t kid, uint32_t points, uint32_t aft
   doc["title"] = "BONUS!";
   char sub[48];
   snprintf(sub, sizeof(sub), "+%lu points", static_cast<unsigned long>(points));
+  doc["subtitle"] = sub;
+  doc["points"] = points;
+  doc["tally_after"] = after;
+  doc["ts"] = millis();
+  String json;
+  serializeJson(doc, json);
+  client_.publish(MQTT_CELEBRATE_TOPIC, json.c_str(), false);
+}
+
+void MqttBridge::publishCelebrateBehaviour(size_t kid, int32_t points, const char *title,
+                                           const char *message, uint32_t after) {
+  if (!client_.connected()) {
+    return;
+  }
+  JsonDocument doc;
+  doc["type"] = points >= 0 ? "behaviour" : "penalty";
+  doc["kid"] = KIDS[kid].slug;
+  if (title && title[0]) {
+    doc["title"] = title;
+  } else {
+    doc["title"] = points >= 0 ? "GREAT BEHAVIOUR!" : "BEHAVIOUR NOTE";
+  }
+  char sub[160];
+  if (message && message[0]) {
+    snprintf(sub, sizeof(sub), "%s  (%+ld pts)", message, static_cast<long>(points));
+  } else {
+    snprintf(sub, sizeof(sub), "%+ld points", static_cast<long>(points));
+  }
   doc["subtitle"] = sub;
   doc["points"] = points;
   doc["tally_after"] = after;

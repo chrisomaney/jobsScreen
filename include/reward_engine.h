@@ -33,6 +33,8 @@ public:
   void begin(JobState *state);
 
   uint16_t jobPoints(size_t job) const;
+  // Points when ALL assigned expectations are done (not per expectation item).
+  uint16_t expectationsCompletePoints() const { return expectations_complete_points_; }
   size_t ruleCount() const { return rule_count_; }
   const RewardRule &rule(size_t i) const { return rules_[i]; }
 
@@ -53,6 +55,7 @@ private:
   JobState *state_ = nullptr;
   Preferences prefs_;
   uint16_t job_points_[JOB_COUNT]{};
+  uint16_t expectations_complete_points_ = 0;
   RewardRule rules_[REWARD_RULE_MAX]{};
   size_t rule_count_ = 0;
   PanelMessage message_{};

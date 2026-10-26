@@ -645,6 +645,32 @@ void JobState::addPoints(size_t kid, uint32_t points) {
   bump();
 }
 
+void JobState::adjustPoints(size_t kid, int32_t delta, bool splash) {
+  if (kid >= KID_COUNT || delta == 0) {
+    return;
+  }
+  int64_t next = static_cast<int64_t>(rewards_[kid]) + delta;
+  if (next < 0) {
+    next = 0;
+  }
+  rewards_[kid] = static_cast<uint32_t>(next);
+  persistReward(kid);
+  bump();
+  if (!splash) {
+    return;
+  }
+  char sub[64];
+  if (delta > 0) {
+    snprintf(sub, sizeof(sub), "+%ld points!  Now %lu", static_cast<long>(delta),
+             static_cast<unsigned long>(rewards_[kid]));
+    queueSplash(SplashKind::Bonus, kid, "BONUS POINTS!", sub);
+  } else {
+    snprintf(sub, sizeof(sub), "%ld points  Now %lu", static_cast<long>(delta),
+             static_cast<unsigned long>(rewards_[kid]));
+    queueSplash(SplashKind::KeepGoing, kid, "Points removed", sub);
+  }
+}
+
 int JobState::findJobIndex(const char *id) { return jobIndex(id); }
 
 void JobState::resetRewards() {

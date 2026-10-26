@@ -53,6 +53,8 @@ public:
   void addBonus(size_t kid, uint32_t points);
   // Add points without a splash (scheduled rules); still bumps revision.
   void addPoints(size_t kid, uint32_t points);
+  // Signed adjust (negative = take points off). Clamps at 0. Optional splash.
+  void adjustPoints(size_t kid, int32_t delta, bool splash);
   void resetRewards();
   static int findJobIndex(const char *id);
 

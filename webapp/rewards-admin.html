@@ -9,13 +9,14 @@
 <style>
   :root {
     --bg: #0B1220; --card: #121C33; --ink: #F8FAFC; --muted: #94A3B8;
-    --cyan: #22D3EE; --green: #34D399; --pink: #FB7185; --line: #1E3A5F;
+    --cyan: #22D3EE; --green: #34D399; --pink: #FB7185; --amber: #FBBF24; --line: #1E3A5F;
     --font: 'Nunito', system-ui, sans-serif; --display: 'Fredoka', var(--font);
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: linear-gradient(#0E1A33, var(--bg)); color: var(--ink); font-family: var(--font); padding: 16px 14px 100px; min-height: 100vh; }
   h1 { font-family: var(--display); font-size: 1.7rem; margin: 8px 0 0; color: var(--cyan); }
   h2 { font-family: var(--display); margin: 0 0 10px; font-size: 1.2rem; color: var(--cyan); }
+  h3 { font-family: var(--display); margin: 14px 0 8px; font-size: 1rem; color: var(--amber); }
   .sub { color: var(--muted); margin: 2px 0 14px; font-size: .9rem; }
   .card { background: var(--card); border: 2px solid var(--line); border-radius: 16px; padding: 16px; margin: 12px 0; }
   label { display: block; font-size: .75rem; font-weight: 800; color: var(--muted); margin: 8px 0 4px; }
@@ -27,7 +28,6 @@
   .pink { background: var(--pink); color: #fff; }
   .ghost { background: #1E293B; color: var(--ink); }
   .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-  .row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
   .pill { display: inline-flex; font-weight: 800; font-size: .75rem; padding: 6px 12px; border-radius: 999px; background: #0B1220; border: 1px solid var(--line); }
   .pill.ok { color: var(--green); } .pill.bad { color: var(--pink); }
   .top { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
@@ -42,13 +42,14 @@
   .tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 12px 0; }
   .tabs button { background: #1E293B; color: var(--muted); }
   .tabs button.on { background: var(--cyan); color: #0B1220; }
+  .pm { width: 44px; height: 44px; border-radius: 50%; padding: 0; font-size: 1.3rem; line-height: 1; }
 </style>
 </head>
 <body>
   <div class="top">
     <div>
       <h1>Rewards HQ</h1>
-      <p class="sub">Prizes · points · schedules · screen messages</p>
+      <p class="sub">Prizes · ± points · expectations · jobs · behaviour · schedules</p>
     </div>
     <div class="pill" id="status">Offline</div>
   </div>
@@ -69,8 +70,10 @@
   <div id="app" class="hidden">
     <div class="tabs" id="tabs">
       <button type="button" class="on" data-tab="prizes">Prizes</button>
-      <button type="button" data-tab="bonus">Bonus</button>
-      <button type="button" data-tab="points">Job points</button>
+      <button type="button" data-tab="points">± Points</button>
+      <button type="button" data-tab="expect">Expectations</button>
+      <button type="button" data-tab="jobs">Jobs</button>
+      <button type="button" data-tab="behaviour">Behaviour</button>
       <button type="button" data-tab="rules">Schedules</button>
       <button type="button" data-tab="message">Message</button>
     </div>
@@ -90,26 +93,62 @@
       </div>
     </div>
 
-    <div id="tab-bonus" class="hidden">
+    <div id="tab-points" class="hidden">
       <div class="card">
-        <h2>Give bonus now</h2>
+        <h2>Add or take points</h2>
+        <p class="hint">+ adds a bonus. − takes points off (never goes below 0).</p>
         <div id="kids"></div>
       </div>
     </div>
 
-    <div id="tab-points" class="hidden">
+    <div id="tab-expect" class="hidden">
       <div class="card">
-        <h2>Points per job</h2>
-        <p class="hint">Used by “sum finished jobs” schedule rules. Custom jobs appear after the panel publishes config.</p>
+        <h2>Expectations</h2>
+        <p class="hint">No points per item. Kids only earn the bundle below when <strong>all</strong> their assigned expectations are done (used by “sum finished jobs” schedules).</p>
+        <label>Points when ALL expectations are done</label>
+        <input id="expBundle" type="number" min="0" value="0">
+        <h3>Items (0 points each)</h3>
+        <div id="expectList"></div>
+        <div class="actions"><button class="big" id="saveExpect">Save expectations points</button></div>
+      </div>
+    </div>
+
+    <div id="tab-jobs" class="hidden">
+      <div class="card">
+        <h2>Jobs (paid)</h2>
+        <p class="hint">These are the chores kids earn points on one-by-one. Set 0 if a job should not pay.</p>
         <div id="jobPoints"></div>
-        <div class="actions"><button class="big" id="saveRulesPts">Save points + rules</button></div>
+        <div class="actions"><button class="big" id="saveJobsPts">Save job points</button></div>
+      </div>
+    </div>
+
+    <div id="tab-behaviour" class="hidden">
+      <div class="card">
+        <h2>Behaviour</h2>
+        <p class="hint">Reward good behaviour or note a penalty — points update, message on the glass, and TV celebrate page.</p>
+        <label>Kid</label>
+        <select id="behKid"></select>
+        <label>Points (+ reward / − penalty)</label>
+        <input id="behPts" type="number" value="1">
+        <label>Title</label>
+        <input id="behTitle" value="Great behaviour!">
+        <label>Message</label>
+        <textarea id="behMsg" placeholder="Helped with the baby without being asked"></textarea>
+        <label>Show on panel for (seconds)</label>
+        <input id="behSec" type="number" min="3" value="15">
+        <label><input type="checkbox" id="behPanel" checked> Show on panel screen</label>
+        <label><input type="checkbox" id="behTv" checked> Show on TV (celebrate page)</label>
+        <div class="actions">
+          <button class="mint" id="behReward">Reward (+)</button>
+          <button class="pink" id="behPenalty">Penalty (−)</button>
+        </div>
       </div>
     </div>
 
     <div id="tab-rules" class="hidden">
       <div class="card">
         <h2>Scheduled rules</h2>
-        <p class="hint">Flat bonus, sum of job points, or one specific job — you pick days, time, amounts, and kids.</p>
+        <p class="hint">Flat bonus, sum of job points (+ expectations bundle), or one specific paid job — you pick days, time, amounts, and kids.</p>
         <div id="rules"></div>
       </div>
       <div class="card">
@@ -120,8 +159,8 @@
         <label>Type</label>
         <select id="ruleKind">
           <option value="flat">Flat bonus (fixed points)</option>
-          <option value="job_sum">Sum points for finished jobs</option>
-          <option value="job">One specific job</option>
+          <option value="job_sum">Sum finished Jobs + expectations bundle</option>
+          <option value="job">One specific paid job</option>
         </select>
         <div id="ruleJobWrap" class="hidden">
           <label>Job</label>
@@ -173,7 +212,9 @@ const KIDS = [
   {name:'Hazel', slug:'hazel', color:'#A855F7'},
 ];
 const DAY_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const TABS = ['prizes','points','expect','jobs','behaviour','rules','message'];
 let client = null, catalog = [], jobs = [], jobPoints = {}, rules = [];
+let expBundle = 0;
 const tallies = Object.fromEntries(KIDS.map(k => [k.slug, 0]));
 const $ = id => document.getElementById(id);
 
@@ -194,6 +235,15 @@ function daysMaskFromChecks(root) {
 }
 function kindLabel(k) {
   return k === 'job_sum' ? 'Sum jobs' : k === 'job' ? 'One job' : 'Flat';
+}
+function expectJobs() { return jobs.filter(j => j.cat !== 'paid'); }
+function paidJobs() { return jobs.filter(j => j.cat === 'paid'); }
+
+function publishAdjust(slug, points) {
+  if (!client?.connected) return alert('Connect first');
+  const n = parseInt(points, 10);
+  if (!n) return;
+  client.publish('kids/rewards/bonus/set', JSON.stringify({ kid: slug, points: n }));
 }
 
 function renderPrizes() {
@@ -223,28 +273,48 @@ function renderKids() {
         <strong>${k.name}</strong>
       </div>
       <div class="tally">${tallies[k.slug]||0}</div>
-      <button class="mint" data-bonus="${k.slug}">+ Bonus</button>
+      <div class="actions">
+        <button class="mint pm" data-add="${k.slug}" title="Add points">+</button>
+        <button class="pink pm" data-sub="${k.slug}" title="Take points off">−</button>
+      </div>
     </div>`).join('');
-  $('kids').querySelectorAll('[data-bonus]').forEach(b => b.onclick = () => {
-    const pts = prompt('Bonus points for ' + b.dataset.bonus + '?', '1');
+  $('kids').querySelectorAll('[data-add]').forEach(b => b.onclick = () => {
+    const pts = prompt('Add points for ' + b.dataset.add + '?', '1');
     if (pts == null) return;
-    client.publish('kids/rewards/bonus/set', JSON.stringify({ kid: b.dataset.bonus, points: Math.max(1, parseInt(pts,10)||1) }));
+    publishAdjust(b.dataset.add, Math.max(1, parseInt(pts,10)||1));
+  });
+  $('kids').querySelectorAll('[data-sub]').forEach(b => b.onclick = () => {
+    const pts = prompt('Take how many points off ' + b.dataset.sub + '?', '1');
+    if (pts == null) return;
+    const n = Math.max(1, parseInt(pts,10)||1);
+    publishAdjust(b.dataset.sub, -n);
   });
 }
+function renderExpect() {
+  $('expBundle').value = expBundle;
+  const list = expectJobs();
+  $('expectList').innerHTML = list.length
+    ? list.map(j => `<div class="jp"><div><strong>${escapeHtml(j.label)}</strong><div class="sub" style="margin:0">${escapeHtml(j.id)} · 0 pts</div></div></div>`).join('')
+    : '<p class="sub">Waiting for kids/config/state…</p>';
+}
 function renderJobPoints() {
-  if (!jobs.length) {
-    $('jobPoints').innerHTML = '<p class="sub">Waiting for kids/config/state from the panel…</p>';
+  const list = paidJobs();
+  if (!list.length) {
+    $('jobPoints').innerHTML = jobs.length
+      ? '<p class="sub">No paid jobs yet — mark chores as Jobs in Jobs Chooser.</p>'
+      : '<p class="sub">Waiting for kids/config/state from the panel…</p>';
     return;
   }
-  $('jobPoints').innerHTML = jobs.map(j => `
+  $('jobPoints').innerHTML = list.map(j => `
     <div class="jp">
       <div><strong>${escapeHtml(j.label)}</strong><div class="sub" style="margin:0">${escapeHtml(j.id)}</div></div>
-      <input style="width:90px" type="number" min="1" data-jp="${escapeHtml(j.id)}" value="${jobPoints[j.id]||1}">
+      <input style="width:90px" type="number" min="0" data-jp="${escapeHtml(j.id)}" value="${jobPoints[j.id] ?? 1}">
     </div>`).join('');
 }
 function renderRuleJobSelect() {
-  $('ruleJob').innerHTML = jobs.map(j => `<option value="${escapeHtml(j.id)}">${escapeHtml(j.label)}</option>`).join('')
-    || '<option value="">(no jobs yet)</option>';
+  const list = paidJobs();
+  $('ruleJob').innerHTML = list.map(j => `<option value="${escapeHtml(j.id)}">${escapeHtml(j.label)}</option>`).join('')
+    || '<option value="">(no paid jobs yet)</option>';
 }
 function renderRules() {
   $('rules').innerHTML = rules.map((r,i) => {
@@ -291,17 +361,58 @@ function syncRuleKindUi() {
 }
 function collectJobPointsFromDom() {
   document.querySelectorAll('[data-jp]').forEach(inp => {
-    jobPoints[inp.dataset.jp] = Math.max(1, parseInt(inp.value,10)||1);
+    const v = parseInt(inp.value, 10);
+    jobPoints[inp.dataset.jp] = Number.isFinite(v) && v >= 0 ? v : 0;
   });
+  // Force expectation items to 0 in the payload.
+  expectJobs().forEach(j => { jobPoints[j.id] = 0; });
+  expBundle = Math.max(0, parseInt($('expBundle').value, 10) || 0);
 }
 function rulesPayload() {
   collectJobPointsFromDom();
-  return { job_points: jobPoints, rules };
+  return {
+    expectations_complete_points: expBundle,
+    job_points: jobPoints,
+    rules,
+  };
 }
-function pushRules() {
+function pushRules(msg) {
   if (!client?.connected) return alert('Connect first');
   client.publish('kids/rewards/rules/set', JSON.stringify(rulesPayload()));
-  alert('Rules saved to the panel');
+  alert(msg || 'Saved to the panel');
+}
+function pushPointsOnly() {
+  if (!client?.connected) return alert('Connect first');
+  collectJobPointsFromDom();
+  client.publish('kids/rewards/rules/set', JSON.stringify({
+    expectations_complete_points: expBundle,
+    job_points: jobPoints,
+    rules, // keep existing rules so we don't wipe them
+  }));
+  alert('Points saved to the panel');
+}
+
+function sendBehaviour(forceSign) {
+  if (!client?.connected) return alert('Connect first');
+  let pts = parseInt($('behPts').value, 10) || 0;
+  if (!pts) return alert('Enter points (use − for penalty, or tap Penalty)');
+  if (forceSign === '+') pts = Math.abs(pts);
+  if (forceSign === '-') pts = -Math.abs(pts);
+  const kid = $('behKid').value;
+  const title = $('behTitle').value.trim() || (pts > 0 ? 'Great behaviour!' : 'Behaviour note');
+  const message = $('behMsg').value.trim();
+  if (!message) return alert('Add a message for the screen / TV');
+  client.publish('kids/rewards/bonus/set', JSON.stringify({
+    kid,
+    points: pts,
+    behaviour: true,
+    title,
+    message,
+    panel: $('behPanel').checked,
+    tv: $('behTv').checked,
+    seconds: Math.max(3, parseInt($('behSec').value, 10) || 15),
+  }));
+  alert(pts > 0 ? 'Reward sent' : 'Penalty sent');
 }
 
 function connect() {
@@ -331,15 +442,24 @@ function connect() {
         const d = JSON.parse(body) || {};
         jobPoints = d.job_points || {};
         rules = d.rules || [];
-        renderJobPoints(); renderRules(); renderRuleJobSelect();
+        expBundle = d.expectations_complete_points ?? 0;
+        renderExpect(); renderJobPoints(); renderRules(); renderRuleJobSelect();
       } catch (_) {}
     }
     if (topic === 'kids/config/state') {
       try {
         const d = JSON.parse(body);
-        jobs = (d.jobs || []).map(j => ({ id: j.id, label: j.label || j.id }));
-        jobs.forEach(j => { if (jobPoints[j.id] == null) jobPoints[j.id] = 1; });
-        renderJobPoints(); renderRuleJobSelect();
+        jobs = (d.jobs || []).map(j => ({
+          id: j.id,
+          label: j.label || j.id,
+          cat: j.cat === 'paid' ? 'paid' : 'expectation',
+        }));
+        jobs.forEach(j => {
+          if (jobPoints[j.id] == null) {
+            jobPoints[j.id] = j.cat === 'paid' ? 1 : 0;
+          }
+        });
+        renderExpect(); renderJobPoints(); renderRuleJobSelect();
       } catch (_) {}
     }
     KIDS.forEach(k => {
@@ -351,9 +471,7 @@ function connect() {
 $('tabs').onclick = (e) => {
   const btn = e.target.closest('[data-tab]'); if (!btn) return;
   $('tabs').querySelectorAll('button').forEach(b => b.classList.toggle('on', b===btn));
-  ['prizes','bonus','points','rules','message'].forEach(t => {
-    $('tab-'+t).classList.toggle('hidden', t !== btn.dataset.tab);
-  });
+  TABS.forEach(t => $('tab-'+t).classList.toggle('hidden', t !== btn.dataset.tab));
 };
 $('connectBtn').onclick = connect;
 $('addPrize').onclick = () => {
@@ -400,8 +518,11 @@ $('clearRule').onclick = () => {
   $('ruleKids').querySelectorAll('input').forEach(c => c.checked = true);
   syncRuleKindUi();
 };
-$('saveRules').onclick = pushRules;
-$('saveRulesPts').onclick = pushRules;
+$('saveRules').onclick = () => pushRules('Rules saved to the panel');
+$('saveExpect').onclick = pushPointsOnly;
+$('saveJobsPts').onclick = pushPointsOnly;
+$('behReward').onclick = () => sendBehaviour('+');
+$('behPenalty').onclick = () => sendBehaviour('-');
 $('sendMsg').onclick = () => {
   if (!client?.connected) return alert('Connect first');
   const text = $('msgText').value.trim(); if (!text) return;
@@ -417,13 +538,14 @@ $('sendMsg').onclick = () => {
     `<label><input type="checkbox" checked data-day="${i}"> ${d}</label>`).join('');
   $('ruleKids').innerHTML = KIDS.map(k =>
     `<label><input type="checkbox" checked value="${k.slug}"> ${k.name}</label>`).join('');
+  $('behKid').innerHTML = KIDS.map(k => `<option value="${k.slug}">${k.name}</option>`).join('');
   const host = location.hostname || 'homeassistant.local';
   $('broker').value = `ws://${host}:1884`;
   try {
     const s = JSON.parse(localStorage.getItem('rewardsAdmin')||'null');
     if (s?.remember) { $('broker').value = s.url||$('broker').value; $('user').value = s.username||''; $('pass').value = s.password||''; connect(); }
   } catch(_){}
-  renderPrizes(); renderKids(); renderRules(); syncRuleKindUi();
+  renderPrizes(); renderKids(); renderExpect(); renderJobPoints(); renderRules(); syncRuleKindUi();
 })();
 </script>
 </body>
