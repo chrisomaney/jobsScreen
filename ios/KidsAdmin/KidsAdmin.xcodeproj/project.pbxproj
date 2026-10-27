@@ -19,6 +19,7 @@
 		A1000000000000000000000A /* BehaviourView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000000A /* BehaviourView.swift */; };
 		A1000000000000000000000B /* CatalogueView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000000B /* CatalogueView.swift */; };
 		A1000000000000000000000C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000000C /* Assets.xcassets */; };
+		A1000000000000000000000D /* Keyboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000000E /* Keyboard.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -35,6 +36,7 @@
 		B1000000000000000000000B /* CatalogueView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogueView.swift; sourceTree = "<group>"; };
 		B1000000000000000000000C /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		B1000000000000000000000D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		B1000000000000000000000E /* Keyboard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Keyboard.swift; sourceTree = "<group>"; };
 		C10000000000000000000001 /* KidsAdmin.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = KidsAdmin.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -93,6 +95,7 @@
 				B10000000000000000000004 /* SettingsStore.swift */,
 				B10000000000000000000005 /* MqttClient.swift */,
 				B10000000000000000000006 /* AdminStore.swift */,
+				B1000000000000000000000E /* Keyboard.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -189,6 +192,7 @@
 				A10000000000000000000009 /* PointsView.swift in Sources */,
 				A1000000000000000000000A /* BehaviourView.swift in Sources */,
 				A1000000000000000000000B /* CatalogueView.swift in Sources */,
+				A1000000000000000000000D /* Keyboard.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

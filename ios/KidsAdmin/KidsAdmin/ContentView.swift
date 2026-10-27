@@ -19,6 +19,7 @@ struct ContentView: View {
         }
         .tint(Color(red: 0.13, green: 0.83, blue: 0.93))
         .preferredColorScheme(.dark)
+        .keyboardDoneButton()
     }
 }
 

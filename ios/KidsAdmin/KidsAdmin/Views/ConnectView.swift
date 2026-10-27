@@ -28,19 +28,25 @@ struct ConnectView: View {
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .keyboardType(.URL)
+                        .submitLabel(.done)
+                        .onSubmit { Keyboard.dismiss() }
                     TextField("Username", text: $settings.username)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
+                        .submitLabel(.next)
                     SecureField("Password", text: $settings.password)
+                        .submitLabel(.done)
+                        .onSubmit { Keyboard.dismiss() }
                     Toggle("Remember on this iPhone", isOn: $settings.remember)
                 } header: {
                     Text("Mosquitto WebSockets")
                 } footer: {
-                    Text("Same login as Rewards HQ. Use wss:// if you need TLS. Local Network permission may be required for .local hosts.")
+                    Text("Same login as Rewards HQ. Use wss:// if you need TLS. Local Network permission may be required for .local hosts. Drag the form or tap Done on the keyboard to close it.")
                 }
 
                 Section {
                     Button(admin.connected ? "Reconnect" : "Connect") {
+                        Keyboard.dismiss()
                         admin.connect()
                     }
                     .disabled(settings.broker.trimmingCharacters(in: .whitespaces).isEmpty)
@@ -57,6 +63,7 @@ struct ConnectView: View {
                         .foregroundStyle(.secondary)
                 }
             }
+            .dismissKeyboardOnScroll()
             .navigationTitle("Connect")
         }
     }
