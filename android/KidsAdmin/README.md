@@ -40,6 +40,12 @@ Flash the panel firmware that supports internet overrides.
 - Android 8.0+ (API 26)
 - Phone on the same LAN as Mosquitto
 
+## iOS Downtime / Screen Time
+
+This app cannot turn Apple Downtime on or off for a kid’s iPhone on the LAN.
+Use Apple Family Sharing → Screen Time on a parent iPhone, or MDM. Kids Admin
+controls MikroTik internet unlock separately.
+
 ## Build from CLI (optional)
 
 ```bash

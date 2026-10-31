@@ -38,3 +38,9 @@ Flash the matching panel firmware so internet overrides stick when jobs change.
 - Xcode 15+ (iOS 17 deployment target)
 - iPhone on the same Wi‑Fi as Mosquitto / the panel
 - No App Store account required for installing on your own device with a free Apple ID (7‑day refresh for free provisioning)
+
+## iOS Downtime / Screen Time
+
+Apple does **not** allow a home-network app to turn another iPhone’s Downtime on or off.
+That needs Apple **Family Sharing → Screen Time** (on your parent iPhone), or a school/work **MDM**.
+Kids Admin can unlock MikroTik internet; use Screen Time separately for app/device limits.

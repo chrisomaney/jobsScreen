@@ -29,6 +29,25 @@ void strip_chrome(lv_obj_t *o) {
   lv_obj_set_style_radius(o, 0, 0);
 }
 
+// Full-bleed screen: theme padding + accidental scroll was shifting/mirroring the UI.
+void prep_screen(lv_obj_t *s) {
+  strip_chrome(s);
+  lv_obj_set_size(s, LCD_H_RES, LCD_V_RES);
+  lv_obj_set_pos(s, 0, 0);
+  lv_obj_clear_flag(s, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_clear_flag(s, LV_OBJ_FLAG_SCROLL_CHAIN);
+  lv_obj_clear_flag(s, LV_OBJ_FLAG_SCROLL_ELASTIC);
+  lv_obj_clear_flag(s, LV_OBJ_FLAG_GESTURE_BUBBLE);
+  lv_obj_set_scroll_dir(s, LV_DIR_NONE);
+}
+
+void harden_scroll_list(lv_obj_t *list) {
+  // List may scroll vertically; never chain that drag onto the parent screen.
+  lv_obj_clear_flag(list, LV_OBJ_FLAG_SCROLL_CHAIN);
+  lv_obj_clear_flag(list, LV_OBJ_FLAG_SCROLL_ELASTIC);
+  lv_obj_set_scroll_dir(list, LV_DIR_VER);
+}
+
 void style_space_bg(lv_obj_t *o) {
   strip_chrome(o);
   lv_obj_set_style_bg_color(o, c(COL_PRIZE_BG), 0);
@@ -51,20 +70,32 @@ lv_obj_t *make_bar(lv_obj_t *parent, int x, int y, int w, int h, uint32_t color,
 }
 
 void paint_hud_backdrop(lv_obj_t *parent) {
-  make_bar(parent, 0, 0, LCD_H_RES, 64, COL_PRIZE_SKY, LV_OPA_COVER);
+  // Quiet glass header / floor lines — no neon
+  make_bar(parent, 0, 0, LCD_H_RES, 56, COL_PRIZE_SKY, LV_OPA_COVER);
   constexpr int floor_y = 400;
-  make_bar(parent, 0, floor_y, LCD_H_RES, 2, COL_PRIZE_ACCENT, LV_OPA_50);
-  for (int i = 0; i < 9; ++i) {
-    make_bar(parent, 40 + i * 90, floor_y, 1, LCD_V_RES - floor_y, COL_PRIZE_LINE, LV_OPA_50);
-  }
-  make_bar(parent, 16, 12, 36, 3, COL_PRIZE_ACCENT, LV_OPA_COVER);
-  make_bar(parent, 16, 12, 3, 28, COL_PRIZE_ACCENT, LV_OPA_COVER);
-  make_bar(parent, LCD_H_RES - 52, 12, 36, 3, COL_PRIZE_ACCENT, LV_OPA_COVER);
-  make_bar(parent, LCD_H_RES - 19, 12, 3, 28, COL_PRIZE_ACCENT, LV_OPA_COVER);
+  make_bar(parent, 0, floor_y, LCD_H_RES, 1, COL_BORDER, LV_OPA_COVER);
+  make_bar(parent, 24, 16, 48, 2, COL_BORDER, LV_OPA_COVER);
+  make_bar(parent, LCD_H_RES - 72, 16, 48, 2, COL_BORDER, LV_OPA_COVER);
 }
 
-const uint32_t AD_RIMS[] = {0x22D3EE, 0xA78BFA, 0x34D399, 0xF472B6, 0xFBBF24};
+const uint32_t AD_RIMS[] = {0x3A3A3A, 0x4A4A4A, 0x5A5A5A, 0x2E2E2E, 0x6A6A6A};
 const size_t AD_RIM_COUNT = sizeof(AD_RIMS) / sizeof(AD_RIMS[0]);
+
+void style_glass_btn(lv_obj_t *btn) {
+  lv_obj_set_style_bg_color(btn, c(COL_BTN), 0);
+  lv_obj_set_style_bg_color(btn, c(COL_BTN_PRESSED), LV_STATE_PRESSED);
+  lv_obj_set_style_border_width(btn, 1, 0);
+  lv_obj_set_style_border_color(btn, c(COL_BORDER), 0);
+  lv_obj_set_style_shadow_width(btn, 0, 0);
+}
+
+void style_glass_card(lv_obj_t *card) {
+  lv_obj_set_style_bg_color(card, c(COL_CARD), 0);
+  lv_obj_set_style_border_width(card, 1, 0);
+  lv_obj_set_style_border_color(card, c(COL_BORDER), 0);
+  lv_obj_set_style_shadow_width(card, 0, 0);
+  lv_obj_set_style_outline_width(card, 0, 0);
+}
 
 // 800×480 prize idle layout (jobs button is the big CTA)
 constexpr int CARD_Y = 58;
@@ -152,15 +183,17 @@ void AppUi::applyBacklightForScreen() {
 }
 
 void AppUi::styleTab(lv_obj_t *btn, bool active, uint32_t accent) {
-  lv_obj_set_style_bg_color(btn, c(active ? accent : COL_BTN), 0);
-  lv_obj_set_style_border_width(btn, active ? 0 : 2, 0);
-  lv_obj_set_style_border_color(btn, c(accent), 0);
+  (void)accent;
+  lv_obj_set_style_bg_color(btn, c(active ? COL_GLASS : COL_BTN), 0);
+  lv_obj_set_style_border_width(btn, 1, 0);
+  lv_obj_set_style_border_color(btn, c(active ? COL_TEXT : COL_BORDER), 0);
 }
 
 void AppUi::buildIdle() {
   screen_idle_ = lv_obj_create(nullptr);
   style_space_bg(screen_idle_);
-  lv_obj_clear_flag(screen_idle_, LV_OBJ_FLAG_SCROLLABLE);
+  prep_screen(screen_idle_);
+  style_space_bg(screen_idle_);  // re-apply bg after prep clears styles we need
 
   ad_layer_ = lv_obj_create(screen_idle_);
   style_space_bg(ad_layer_);
@@ -169,21 +202,18 @@ void AppUi::buildIdle() {
   lv_obj_clear_flag(ad_layer_, LV_OBJ_FLAG_SCROLLABLE);
   paint_hud_backdrop(ad_layer_);
 
-  lv_obj_t *brand = make_label(ad_layer_, "PRIZE STATION", &lv_font_montserrat_24, COL_PRIZE_ACCENT);
+  lv_obj_t *brand = make_label(ad_layer_, "PRIZE STATION", &lv_font_montserrat_24, COL_TEXT);
   lv_obj_align(brand, LV_ALIGN_TOP_MID, 0, 18);
 
   prize_card_ = lv_obj_create(ad_layer_);
   lv_obj_set_size(prize_card_, 720, CARD_H);
   lv_obj_set_pos(prize_card_, (LCD_H_RES - 720) / 2, CARD_Y);
+  style_glass_card(prize_card_);
   lv_obj_set_style_bg_color(prize_card_, c(COL_PRIZE_CARD), 0);
-  lv_obj_set_style_border_width(prize_card_, 3, 0);
-  lv_obj_set_style_border_color(prize_card_, c(COL_PRIZE_ACCENT), 0);
-  lv_obj_set_style_outline_width(prize_card_, 0, 0);
-  lv_obj_set_style_shadow_width(prize_card_, 0, 0);
-  lv_obj_set_style_radius(prize_card_, 18, 0);
+  lv_obj_set_style_radius(prize_card_, 16, 0);
   lv_obj_set_style_pad_all(prize_card_, 12, 0);
   lv_obj_clear_flag(prize_card_, LV_OBJ_FLAG_SCROLLABLE);
-  make_bar(prize_card_, 0, 0, 720, 5, COL_PRIZE_ACCENT, LV_OPA_COVER);
+  make_bar(prize_card_, 0, 0, 720, 2, COL_BORDER, LV_OPA_COVER);
 
   prize_name_ = make_label(prize_card_, "", &lv_font_montserrat_28, COL_TEXT);
   lv_label_set_long_mode(prize_name_, LV_LABEL_LONG_WRAP);
@@ -191,33 +221,28 @@ void AppUi::buildIdle() {
   lv_obj_set_style_text_align(prize_name_, LV_TEXT_ALIGN_CENTER, 0);
   lv_obj_align(prize_name_, LV_ALIGN_TOP_MID, 0, 28);
 
-  prize_cost_ = make_label(prize_card_, "", &lv_font_montserrat_24, COL_PRIZE_COST);
+  prize_cost_ = make_label(prize_card_, "", &lv_font_montserrat_24, COL_MUTED);
   lv_obj_align(prize_cost_, LV_ALIGN_BOTTOM_MID, 0, -16);
 
   want_btn_ = lv_btn_create(ad_layer_);
   lv_obj_set_size(want_btn_, 300, WANT_H);
   lv_obj_set_pos(want_btn_, (LCD_H_RES - 300) / 2, WANT_Y);
-  lv_obj_set_style_bg_color(want_btn_, c(COL_PRIZE_ACCENT), 0);
-  lv_obj_set_style_bg_color(want_btn_, c(COL_PRIZE_ACCENT2), LV_STATE_PRESSED);
+  style_glass_btn(want_btn_);
   lv_obj_set_style_radius(want_btn_, 12, 0);
-  lv_obj_set_style_shadow_width(want_btn_, 0, 0);
-  lv_obj_set_style_border_width(want_btn_, 0, 0);
   lv_obj_add_event_cb(want_btn_, onWantPrize, LV_EVENT_CLICKED, nullptr);
-  lv_obj_t *want_lbl = make_label(want_btn_, "I WANT THIS", &lv_font_montserrat_24, COL_PRIZE_BG);
+  lv_obj_t *want_lbl = make_label(want_btn_, "I WANT THIS", &lv_font_montserrat_24, COL_TEXT);
   lv_obj_center(want_lbl);
 
   // Big jobs entry button
   jobs_btn_ = lv_btn_create(ad_layer_);
   lv_obj_set_size(jobs_btn_, 520, JOBS_H);
   lv_obj_set_pos(jobs_btn_, (LCD_H_RES - 520) / 2, JOBS_Y);
-  lv_obj_set_style_bg_color(jobs_btn_, c(0xF8FAFC), 0);
-  lv_obj_set_style_bg_color(jobs_btn_, c(COL_PRIZE_ACCENT2), LV_STATE_PRESSED);
+  style_glass_btn(jobs_btn_);
+  lv_obj_set_style_bg_color(jobs_btn_, c(COL_GLASS), 0);
+  lv_obj_set_style_border_color(jobs_btn_, c(COL_TEXT), 0);
   lv_obj_set_style_radius(jobs_btn_, 16, 0);
-  lv_obj_set_style_shadow_width(jobs_btn_, 0, 0);
-  lv_obj_set_style_border_width(jobs_btn_, 3, 0);
-  lv_obj_set_style_border_color(jobs_btn_, c(COL_PRIZE_ACCENT), 0);
   lv_obj_add_event_cb(jobs_btn_, onLetsGo, LV_EVENT_CLICKED, nullptr);
-  lv_obj_t *jobs_lbl = make_label(jobs_btn_, "JOBS  →", &lv_font_montserrat_28, COL_PRIZE_BG);
+  lv_obj_t *jobs_lbl = make_label(jobs_btn_, "JOBS  →", &lv_font_montserrat_28, COL_TEXT);
   lv_obj_center(jobs_lbl);
 
   score_row_ = lv_obj_create(ad_layer_);
@@ -233,8 +258,7 @@ void AppUi::buildIdle() {
   for (size_t i = 0; i < KID_COUNT; ++i) {
     score_chips_[i] = lv_obj_create(score_row_);
     lv_obj_set_size(score_chips_[i], chip_w, 56);
-    lv_obj_set_style_bg_color(score_chips_[i], c(0x0B1220), 0);
-    lv_obj_set_style_border_width(score_chips_[i], 2, 0);
+    style_glass_card(score_chips_[i]);
     lv_obj_set_style_border_color(score_chips_[i], c(KIDS[i].color), 0);
     lv_obj_set_style_radius(score_chips_[i], 10, 0);
     lv_obj_set_style_pad_all(score_chips_[i], 2, 0);
@@ -272,11 +296,9 @@ void AppUi::buildIdle() {
     const int row = static_cast<int>(i) / cols;
     const int col = static_cast<int>(i) % cols;
     lv_obj_set_pos(kid_btns_[i], start_x + col * (btn_w + gap_x), 90 + row * (btn_h + gap_y));
-    lv_obj_set_style_bg_color(kid_btns_[i], c(0x0B1220), 0);
-    lv_obj_set_style_border_width(kid_btns_[i], 3, 0);
+    style_glass_btn(kid_btns_[i]);
     lv_obj_set_style_border_color(kid_btns_[i], c(KIDS[i].color), 0);
     lv_obj_set_style_radius(kid_btns_[i], 12, 0);
-    lv_obj_set_style_shadow_width(kid_btns_[i], 0, 0);
     lv_obj_add_event_cb(kid_btns_[i], onPrizeKid, LV_EVENT_CLICKED, reinterpret_cast<void *>(i));
     kid_lbls_[i] = make_label(kid_btns_[i], KIDS[i].name, &lv_font_montserrat_20, COL_TEXT);
     lv_obj_set_style_text_align(kid_lbls_[i], LV_TEXT_ALIGN_CENTER, 0);
@@ -286,13 +308,10 @@ void AppUi::buildIdle() {
   lv_obj_t *cancel = lv_btn_create(picker_layer_);
   lv_obj_set_size(cancel, 200, 56);
   lv_obj_set_pos(cancel, (LCD_H_RES - 200) / 2, LCD_V_RES - 72);
-  lv_obj_set_style_bg_color(cancel, c(COL_PRIZE_BTN_BACK), 0);
+  style_glass_btn(cancel);
   lv_obj_set_style_radius(cancel, 10, 0);
-  lv_obj_set_style_shadow_width(cancel, 0, 0);
-  lv_obj_set_style_border_width(cancel, 2, 0);
-  lv_obj_set_style_border_color(cancel, c(COL_MUTED), 0);
   lv_obj_add_event_cb(cancel, onPrizeCancel, LV_EVENT_CLICKED, nullptr);
-  lv_obj_t *cl = make_label(cancel, "ABORT", &lv_font_montserrat_18, COL_TEXT);
+  lv_obj_t *cl = make_label(cancel, "CANCEL", &lv_font_montserrat_18, COL_TEXT);
   lv_obj_center(cl);
 
   splash_layer_ = lv_obj_create(screen_idle_);
@@ -302,11 +321,11 @@ void AppUi::buildIdle() {
   lv_obj_add_flag(splash_layer_, LV_OBJ_FLAG_HIDDEN);
   lv_obj_clear_flag(splash_layer_, LV_OBJ_FLAG_SCROLLABLE);
 
-  splash_stars_ = make_label(splash_layer_, "* * * * *", &lv_font_montserrat_28, COL_PRIZE_ACCENT);
+  splash_stars_ = make_label(splash_layer_, "— — —", &lv_font_montserrat_28, COL_MUTED);
   lv_obj_align(splash_stars_, LV_ALIGN_TOP_MID, 0, 70);
   splash_title_ = make_label(splash_layer_, "YOU WIN!", &lv_font_montserrat_28, COL_TEXT);
   lv_obj_align(splash_title_, LV_ALIGN_CENTER, 0, -40);
-  splash_kid_ = make_label(splash_layer_, "", &lv_font_montserrat_28, COL_PRIZE_ACCENT);
+  splash_kid_ = make_label(splash_layer_, "", &lv_font_montserrat_28, COL_TEXT);
   lv_obj_align(splash_kid_, LV_ALIGN_CENTER, 0, 20);
   splash_sub_ = make_label(splash_layer_, "", &lv_font_montserrat_20, COL_MUTED);
   lv_obj_set_width(splash_sub_, LCD_H_RES - 80);
@@ -321,7 +340,7 @@ void AppUi::buildMessageOverlay() {
   strip_chrome(msg_layer_);
   lv_obj_set_size(msg_layer_, LCD_H_RES, LCD_V_RES);
   lv_obj_set_pos(msg_layer_, 0, 0);
-  lv_obj_set_style_bg_color(msg_layer_, c(0x0B1220), 0);
+  lv_obj_set_style_bg_color(msg_layer_, c(COL_BG), 0);
   lv_obj_set_style_bg_opa(msg_layer_, LV_OPA_80, 0);
   lv_obj_add_flag(msg_layer_, LV_OBJ_FLAG_HIDDEN);
   lv_obj_clear_flag(msg_layer_, LV_OBJ_FLAG_SCROLLABLE);
@@ -329,14 +348,13 @@ void AppUi::buildMessageOverlay() {
   lv_obj_t *card = lv_obj_create(msg_layer_);
   lv_obj_set_size(card, 640, 260);
   lv_obj_center(card);
+  style_glass_card(card);
   lv_obj_set_style_bg_color(card, c(COL_PRIZE_CARD), 0);
-  lv_obj_set_style_border_width(card, 3, 0);
-  lv_obj_set_style_border_color(card, c(COL_PRIZE_ACCENT), 0);
-  lv_obj_set_style_radius(card, 18, 0);
+  lv_obj_set_style_radius(card, 16, 0);
   lv_obj_set_style_pad_all(card, 20, 0);
   lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
 
-  msg_title_ = make_label(card, "", &lv_font_montserrat_28, COL_PRIZE_ACCENT);
+  msg_title_ = make_label(card, "", &lv_font_montserrat_28, COL_TEXT);
   lv_obj_align(msg_title_, LV_ALIGN_TOP_MID, 0, 8);
   msg_body_ = make_label(card, "", &lv_font_montserrat_20, COL_TEXT);
   lv_obj_set_width(msg_body_, 580);
@@ -361,9 +379,9 @@ void AppUi::refreshMessageOverlay() {
 
 void AppUi::buildHome() {
   screen_home_ = lv_obj_create(nullptr);
+  prep_screen(screen_home_);
   lv_obj_set_style_bg_color(screen_home_, c(COL_BG), 0);
   lv_obj_set_style_bg_opa(screen_home_, LV_OPA_COVER, 0);
-  lv_obj_clear_flag(screen_home_, LV_OBJ_FLAG_SCROLLABLE);
 
   lv_obj_t *home_title = make_label(screen_home_, "Jobs Sign-off", &lv_font_montserrat_28, COL_TEXT);
   lv_obj_align(home_title, LV_ALIGN_TOP_MID, 0, 8);
@@ -389,11 +407,9 @@ void AppUi::buildHome() {
     lv_obj_t *card = lv_btn_create(screen_home_);
     lv_obj_set_size(card, card_w, card_h);
     lv_obj_set_pos(card, origin_x + col * (card_w + gap_x), origin_y + row * (card_h + gap_y));
+    style_glass_btn(card);
     lv_obj_set_style_bg_color(card, c(COL_CARD), 0);
-    lv_obj_set_style_bg_color(card, c(0x2F445C), LV_STATE_PRESSED);
     lv_obj_set_style_radius(card, 14, 0);
-    lv_obj_set_style_shadow_width(card, 0, 0);
-    lv_obj_set_style_border_width(card, 0, 0);
     lv_obj_add_event_cb(card, onKidCard, LV_EVENT_CLICKED, reinterpret_cast<void *>(i));
 
     lv_obj_t *name = make_label(card, KIDS[i].name, &lv_font_montserrat_24, COL_TEXT);
@@ -406,9 +422,8 @@ void AppUi::buildHome() {
   leftover_btn_ = lv_btn_create(screen_home_);
   lv_obj_set_size(leftover_btn_, 736, 72);
   lv_obj_align(leftover_btn_, LV_ALIGN_BOTTOM_MID, 0, -14);
+  style_glass_btn(leftover_btn_);
   lv_obj_set_style_radius(leftover_btn_, 14, 0);
-  lv_obj_set_style_shadow_width(leftover_btn_, 0, 0);
-  lv_obj_set_style_border_width(leftover_btn_, 0, 0);
   lv_obj_add_event_cb(leftover_btn_, onNotDoneCard, LV_EVENT_CLICKED, nullptr);
 
   leftover_title_ = make_label(leftover_btn_, "Jobs left to do", &lv_font_montserrat_20, COL_TEXT);
@@ -422,16 +437,15 @@ void AppUi::buildHome() {
 
 void AppUi::buildKidScaffold() {
   screen_kid_ = lv_obj_create(nullptr);
+  prep_screen(screen_kid_);
   lv_obj_set_style_bg_color(screen_kid_, c(COL_BG), 0);
   lv_obj_set_style_bg_opa(screen_kid_, LV_OPA_COVER, 0);
-  lv_obj_clear_flag(screen_kid_, LV_OBJ_FLAG_SCROLLABLE);
 
   lv_obj_t *back = lv_btn_create(screen_kid_);
   lv_obj_set_size(back, 96, 40);
   lv_obj_align(back, LV_ALIGN_TOP_LEFT, 10, 8);
-  lv_obj_set_style_bg_color(back, c(COL_BTN), 0);
+  style_glass_btn(back);
   lv_obj_set_style_radius(back, 10, 0);
-  lv_obj_set_style_shadow_width(back, 0, 0);
   lv_obj_add_event_cb(back, onBackHome, LV_EVENT_CLICKED, nullptr);
   lv_obj_t *back_lbl = make_label(back, "< Home", &lv_font_montserrat_14, COL_TEXT);
   lv_obj_center(back_lbl);
@@ -442,9 +456,8 @@ void AppUi::buildKidScaffold() {
   lv_obj_t *reset = lv_btn_create(screen_kid_);
   lv_obj_set_size(reset, 100, 36);
   lv_obj_align(reset, LV_ALIGN_TOP_RIGHT, -176, 10);
-  lv_obj_set_style_bg_color(reset, c(0x7F1D1D), 0);
+  style_glass_btn(reset);
   lv_obj_set_style_radius(reset, 10, 0);
-  lv_obj_set_style_shadow_width(reset, 0, 0);
   lv_obj_add_event_cb(reset, onResetKid, LV_EVENT_LONG_PRESSED, nullptr);
   lv_obj_t *reset_lbl = make_label(reset, "Hold: reset", &lv_font_montserrat_14, COL_TEXT);
   lv_obj_center(reset_lbl);
@@ -453,7 +466,7 @@ void AppUi::buildKidScaffold() {
   lv_obj_set_size(internet_badge_, 150, 36);
   lv_obj_align(internet_badge_, LV_ALIGN_TOP_RIGHT, -12, 10);
   lv_obj_set_style_radius(internet_badge_, 18, 0);
-  lv_obj_set_style_border_width(internet_badge_, 0, 0);
+  style_glass_card(internet_badge_);
   lv_obj_set_style_bg_color(internet_badge_, c(COL_BTN), 0);
   lv_obj_clear_flag(internet_badge_, LV_OBJ_FLAG_SCROLLABLE);
   badge_label_ = make_label(internet_badge_, "Internet OFF", &lv_font_montserrat_14, COL_TEXT);
@@ -482,7 +495,9 @@ void AppUi::buildKidScaffold() {
   lv_obj_align(progress_bar_, LV_ALIGN_TOP_RIGHT, -12, 62);
   lv_bar_set_range(progress_bar_, 0, 100);
   lv_obj_set_style_bg_color(progress_bar_, c(COL_CARD), LV_PART_MAIN);
-  lv_obj_set_style_bg_color(progress_bar_, c(COL_DONE), LV_PART_INDICATOR);
+  lv_obj_set_style_bg_color(progress_bar_, c(COL_TEXT), LV_PART_INDICATOR);
+  lv_obj_set_style_border_width(progress_bar_, 1, LV_PART_MAIN);
+  lv_obj_set_style_border_color(progress_bar_, c(COL_BORDER), LV_PART_MAIN);
   lv_obj_set_style_radius(progress_bar_, 7, LV_PART_MAIN);
   lv_obj_set_style_radius(progress_bar_, 7, LV_PART_INDICATOR);
 
@@ -498,20 +513,20 @@ void AppUi::buildKidScaffold() {
   lv_obj_set_flex_flow(job_list_, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_style_pad_row(job_list_, 6, 0);
   lv_obj_set_scrollbar_mode(job_list_, LV_SCROLLBAR_MODE_AUTO);
+  harden_scroll_list(job_list_);
 }
 
 void AppUi::buildNotDoneScaffold() {
   screen_not_done_ = lv_obj_create(nullptr);
+  prep_screen(screen_not_done_);
   lv_obj_set_style_bg_color(screen_not_done_, c(COL_BG), 0);
   lv_obj_set_style_bg_opa(screen_not_done_, LV_OPA_COVER, 0);
-  lv_obj_clear_flag(screen_not_done_, LV_OBJ_FLAG_SCROLLABLE);
 
   lv_obj_t *back = lv_btn_create(screen_not_done_);
   lv_obj_set_size(back, 96, 40);
   lv_obj_align(back, LV_ALIGN_TOP_LEFT, 10, 8);
-  lv_obj_set_style_bg_color(back, c(COL_BTN), 0);
+  style_glass_btn(back);
   lv_obj_set_style_radius(back, 10, 0);
-  lv_obj_set_style_shadow_width(back, 0, 0);
   lv_obj_add_event_cb(back, onBackHome, LV_EVENT_CLICKED, nullptr);
   lv_obj_t *back_lbl = make_label(back, "< Home", &lv_font_montserrat_14, COL_TEXT);
   lv_obj_center(back_lbl);
@@ -531,13 +546,14 @@ void AppUi::buildNotDoneScaffold() {
   lv_obj_set_flex_flow(not_done_list_, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_style_pad_row(not_done_list_, 6, 0);
   lv_obj_set_scrollbar_mode(not_done_list_, LV_SCROLLBAR_MODE_AUTO);
+  harden_scroll_list(not_done_list_);
 }
 
 void AppUi::buildDoerPicker() {
   screen_doer_ = lv_obj_create(nullptr);
+  prep_screen(screen_doer_);
   lv_obj_set_style_bg_color(screen_doer_, c(COL_BG), 0);
   lv_obj_set_style_bg_opa(screen_doer_, LV_OPA_COVER, 0);
-  lv_obj_clear_flag(screen_doer_, LV_OBJ_FLAG_SCROLLABLE);
 
   doer_prompt_ = make_label(screen_doer_, "Who did this job?", &lv_font_montserrat_24, COL_TEXT);
   lv_obj_align(doer_prompt_, LV_ALIGN_TOP_MID, 0, 40);
@@ -557,10 +573,9 @@ void AppUi::buildDoerPicker() {
     doer_btns_[i] = btn;
     lv_obj_set_size(btn, btn_w, btn_h);
     lv_obj_set_pos(btn, origin_x + col * (btn_w + gap_x), origin_y + row * (btn_h + gap_y));
+    style_glass_btn(btn);
     lv_obj_set_style_bg_color(btn, c(COL_CARD), 0);
-    lv_obj_set_style_bg_color(btn, c(0x2F445C), LV_STATE_PRESSED);
     lv_obj_set_style_radius(btn, 14, 0);
-    lv_obj_set_style_shadow_width(btn, 0, 0);
     lv_obj_add_event_cb(btn, onDoerChosen, LV_EVENT_CLICKED, reinterpret_cast<void *>(i));
     lv_obj_t *n = make_label(btn, KIDS[i].name, &lv_font_montserrat_24, COL_TEXT);
     lv_obj_center(n);
@@ -569,9 +584,8 @@ void AppUi::buildDoerPicker() {
   lv_obj_t *cancel = lv_btn_create(screen_doer_);
   lv_obj_set_size(cancel, 200, 48);
   lv_obj_align(cancel, LV_ALIGN_BOTTOM_MID, 0, -24);
-  lv_obj_set_style_bg_color(cancel, c(COL_BTN), 0);
+  style_glass_btn(cancel);
   lv_obj_set_style_radius(cancel, 12, 0);
-  lv_obj_set_style_shadow_width(cancel, 0, 0);
   lv_obj_add_event_cb(cancel, onDoerCancel, LV_EVENT_CLICKED, nullptr);
   lv_obj_t *cl = make_label(cancel, "Cancel", &lv_font_montserrat_16, COL_TEXT);
   lv_obj_center(cl);
@@ -583,13 +597,15 @@ void AppUi::updateLeftoverHomeButton() {
   }
   const bool open = clock_leftover_screen_open();
   if (open) {
-    lv_obj_set_style_bg_color(leftover_btn_, c(0x7C2D12), 0);
+    lv_obj_set_style_bg_color(leftover_btn_, c(COL_GLASS), 0);
+    lv_obj_set_style_border_color(leftover_btn_, c(COL_TEXT), 0);
     lv_obj_clear_state(leftover_btn_, LV_STATE_DISABLED);
     lv_obj_add_flag(leftover_btn_, LV_OBJ_FLAG_CLICKABLE);
     lv_label_set_text(leftover_title_, "Jobs left to do");
     lv_label_set_text(leftover_hint_, "anyone can help - then tap who did it (rewards)");
   } else {
-    lv_obj_set_style_bg_color(leftover_btn_, c(0x3F3F46), 0);
+    lv_obj_set_style_bg_color(leftover_btn_, c(COL_BTN), 0);
+    lv_obj_set_style_border_color(leftover_btn_, c(COL_BORDER), 0);
     lv_obj_add_state(leftover_btn_, LV_STATE_DISABLED);
     lv_obj_clear_flag(leftover_btn_, LV_OBJ_FLAG_CLICKABLE);
     lv_label_set_text(leftover_title_, "Jobs left to do");
@@ -634,6 +650,7 @@ void AppUi::updateHomeRemainders() {
 
 void AppUi::rebuildJobList() {
   lv_obj_clean(job_list_);
+  lv_obj_scroll_to_y(job_list_, 0, LV_ANIM_OFF);
   for (size_t j = 0; j < JOB_COUNT; ++j) {
     done_btns_[j] = nullptr;
     job_rows_[j] = nullptr;
@@ -652,10 +669,10 @@ void AppUi::rebuildJobList() {
     job_rows_[j] = row;
     // Taller rows so Jax can spot the line icon next to each job / expectation
     lv_obj_set_size(row, 760, 64);
-    lv_obj_set_style_bg_color(row, c(COL_CARD), 0);
+    style_glass_card(row);
     lv_obj_set_style_radius(row, 10, 0);
-    lv_obj_set_style_border_side(row, LV_BORDER_SIDE_LEFT, 0);
-    lv_obj_set_style_border_width(row, 4, 0);
+    lv_obj_set_style_border_side(row, LV_BORDER_SIDE_FULL, 0);
+    lv_obj_set_style_border_width(row, 1, 0);
     lv_obj_set_style_border_color(row, c(accent), 0);
     lv_obj_set_style_pad_left(row, 10, 0);
     lv_obj_set_style_pad_right(row, 8, 0);
@@ -678,8 +695,8 @@ void AppUi::rebuildJobList() {
     done_btns_[j] = btn;
     lv_obj_set_size(btn, 120, 42);
     lv_obj_align(btn, LV_ALIGN_RIGHT_MID, 0, 0);
+    style_glass_btn(btn);
     lv_obj_set_style_radius(btn, 10, 0);
-    lv_obj_set_style_shadow_width(btn, 0, 0);
     // Tap = mark done. Hold = undo (so a stray tap can't switch internet off).
     // SHORT_CLICKED is not sent after a long press, so the two never clash.
     lv_obj_add_event_cb(btn, onDone, LV_EVENT_SHORT_CLICKED, reinterpret_cast<void *>(j));
@@ -704,15 +721,19 @@ void AppUi::updateJobRow(size_t job) {
       lv_label_set_text(lbl, LV_SYMBOL_OK " Done");
     }
     if (job_rows_[job]) {
-      lv_obj_set_style_bg_color(job_rows_[job], c(0x1F3A2E), 0);
+      lv_obj_set_style_bg_color(job_rows_[job], c(COL_GLASS), 0);
+      lv_obj_set_style_border_color(job_rows_[job], c(COL_TEXT), 0);
     }
   } else {
+    const uint32_t accent =
+        (JobState::jobCategory(job) == JobCategory::Expectation) ? COL_EXPECT : COL_PAID;
     lv_obj_set_style_bg_color(btn, c(COL_BTN), 0);
     if (lbl) {
       lv_label_set_text(lbl, "Done");
     }
     if (job_rows_[job]) {
       lv_obj_set_style_bg_color(job_rows_[job], c(COL_CARD), 0);
+      lv_obj_set_style_border_color(job_rows_[job], c(accent), 0);
     }
   }
 }
@@ -731,17 +752,19 @@ void AppUi::updateKidHeader() {
   lv_bar_set_value(progress_bar_, pct, LV_ANIM_OFF);
 
   char buf[64];
-  snprintf(buf, sizeof(buf), "%u/%u done - hold green to undo", static_cast<unsigned>(cat_done),
+  snprintf(buf, sizeof(buf), "%u/%u done - hold Done to undo", static_cast<unsigned>(cat_done),
            static_cast<unsigned>(cat_total));
   lv_label_set_text(progress_label_, buf);
 
   const bool ready = state_->internetEffective(active_kid_);
-  lv_obj_set_style_bg_color(internet_badge_, c(ready ? COL_DONE : COL_BTN), 0);
+  lv_obj_set_style_bg_color(internet_badge_, c(ready ? COL_GLASS : COL_BTN), 0);
+  lv_obj_set_style_border_color(internet_badge_, c(ready ? COL_TEXT : COL_BORDER), 0);
   lv_label_set_text(badge_label_, ready ? "Internet ON" : "Internet OFF");
 }
 
 void AppUi::rebuildNotDoneList() {
   lv_obj_clean(not_done_list_);
+  lv_obj_scroll_to_y(not_done_list_, 0, LV_ANIM_OFF);
 
   size_t total_left = 0;
   for (size_t k = 0; k < KID_COUNT; ++k) {
@@ -761,11 +784,11 @@ void AppUi::rebuildNotDoneList() {
   if (total_left == 0) {
     lv_obj_t *ok = lv_obj_create(not_done_list_);
     lv_obj_set_size(ok, 760, 80);
-    lv_obj_set_style_bg_color(ok, c(0x1F3A2E), 0);
+    style_glass_card(ok);
+    lv_obj_set_style_bg_color(ok, c(COL_GLASS), 0);
     lv_obj_set_style_radius(ok, 12, 0);
-    lv_obj_set_style_border_width(ok, 0, 0);
     lv_obj_clear_flag(ok, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_t *msg = make_label(ok, "Nothing left - nice work", &lv_font_montserrat_18, COL_DONE);
+    lv_obj_t *msg = make_label(ok, "Nothing left - nice work", &lv_font_montserrat_18, COL_TEXT);
     lv_obj_center(msg);
     return;
   }
@@ -778,9 +801,8 @@ void AppUi::rebuildNotDoneList() {
 
     lv_obj_t *hdr = lv_obj_create(not_done_list_);
     lv_obj_set_size(hdr, 760, 36);
-    lv_obj_set_style_bg_color(hdr, c(COL_CARD), 0);
+    style_glass_card(hdr);
     lv_obj_set_style_radius(hdr, 8, 0);
-    lv_obj_set_style_border_width(hdr, 0, 0);
     lv_obj_clear_flag(hdr, LV_OBJ_FLAG_SCROLLABLE);
 
     char hdr_txt[64];
@@ -796,10 +818,8 @@ void AppUi::rebuildNotDoneList() {
         }
         lv_obj_t *row = lv_obj_create(not_done_list_);
         lv_obj_set_size(row, 760, 60);
-        lv_obj_set_style_bg_color(row, c(COL_CARD), 0);
+        style_glass_card(row);
         lv_obj_set_style_radius(row, 8, 0);
-        lv_obj_set_style_border_side(row, LV_BORDER_SIDE_LEFT, 0);
-        lv_obj_set_style_border_width(row, 4, 0);
         lv_obj_set_style_border_color(row, c(accent), 0);
         lv_obj_set_style_pad_left(row, 10, 0);
         lv_obj_set_style_pad_right(row, 8, 0);
@@ -816,9 +836,8 @@ void AppUi::rebuildNotDoneList() {
         lv_obj_t *btn = lv_btn_create(row);
         lv_obj_set_size(btn, 120, 40);
         lv_obj_align(btn, LV_ALIGN_RIGHT_MID, 0, 0);
-        lv_obj_set_style_bg_color(btn, c(COL_BTN), 0);
+        style_glass_btn(btn);
         lv_obj_set_style_radius(btn, 10, 0);
-        lv_obj_set_style_shadow_width(btn, 0, 0);
         lv_obj_add_event_cb(btn, onLeftoverDone, LV_EVENT_SHORT_CLICKED, packOwnerJob(k, j));
         lv_obj_t *bl = make_label(btn, "Done", &lv_font_montserrat_16, COL_TEXT);
         lv_obj_center(bl);
@@ -966,13 +985,13 @@ void AppUi::showPrizeSplashFromState() {
   if (s.kind == JobState::SplashKind::None) {
     return;
   }
-  uint32_t tint = COL_PRIZE_WIN;
+  uint32_t tint = COL_GLASS;
   const char *stars = "* * * JACKPOT * * *";
   if (s.kind == JobState::SplashKind::Bonus) {
-    tint = COL_PRIZE_BONUS;
+    tint = COL_BTN_ACTIVE;
     stars = "* * * BONUS DROP * * *";
   } else if (s.kind == JobState::SplashKind::KeepGoing) {
-    tint = COL_PRIZE_KEEP;
+    tint = COL_PRIZE_SKY;
     stars = "SIGNAL WEAK — KEEP GOING";
   }
   lv_obj_set_style_bg_color(splash_layer_, c(COL_PRIZE_BG), 0);
