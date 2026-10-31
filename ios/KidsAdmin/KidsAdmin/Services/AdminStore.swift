@@ -11,6 +11,7 @@ final class AdminStore: ObservableObject {
     @Published var expBundle: Int = 0
     @Published var customSlotsFree: Int? = nil
     @Published var commonInternetOn = false
+    @Published var internetSchedules: [InternetSchedule] = []
     @Published var lastError: String?
     @Published var bleReady = false
 
@@ -91,6 +92,7 @@ final class AdminStore: ObservableObject {
                 "kids/rewards/rules/state",
                 "kids/rewards/catalog",
                 "kids/common/internet",
+                "kids/internet/schedules/state",
             ]
             for kid in AdminKid.all {
                 topics.append("kids/\(kid.slug)/progress")
@@ -142,6 +144,41 @@ final class AdminStore: ObservableObject {
     func setCommonInternet(on: Bool) {
         mqtt.publish("kids/common/internet/set", payload: on ? "on" : "off", retain: false)
         commonInternetOn = on
+    }
+
+    func saveInternetSchedules(_ list: [InternetSchedule]? = nil) {
+        let source = list ?? internetSchedules
+        let arr: [[String: Any]] = source.map { s in
+            [
+                "id": s.id,
+                "label": s.label,
+                "kids": s.kids,
+                "days": s.days,
+                "off_hour": s.offHour,
+                "off_minute": s.offMinute,
+                "on_hour": s.onHour,
+                "on_minute": s.onMinute,
+                "enabled": s.enabled,
+            ]
+        }
+        guard let data = try? JSONSerialization.data(withJSONObject: arr),
+              let str = String(data: data, encoding: .utf8) else { return }
+        mqtt.publish("kids/internet/schedules/set", payload: str, retain: false)
+        internetSchedules = source
+    }
+
+    func upsertInternetSchedule(_ schedule: InternetSchedule) {
+        var list = internetSchedules
+        if let idx = list.firstIndex(where: { $0.id == schedule.id }) {
+            list[idx] = schedule
+        } else {
+            list.append(schedule)
+        }
+        saveInternetSchedules(list)
+    }
+
+    func removeInternetSchedule(id: String) {
+        saveInternetSchedules(internetSchedules.filter { $0.id != id })
     }
 
     // MARK: - Points / behaviour
@@ -243,6 +280,10 @@ final class AdminStore: ObservableObject {
             parseRules(data)
             return
         }
+        if topic == "kids/internet/schedules/state" {
+            parseInternetSchedules(data)
+            return
+        }
 
         for kid in AdminKid.all {
             if topic == "kids/\(kid.slug)/rewards/tally" {
@@ -267,11 +308,34 @@ final class AdminStore: ObservableObject {
         if let rewards = obj["rewards"] as? Int { s.tally = rewards }
         if let internet = obj["internet"] as? Bool { s.internetOn = internet }
         if let jobsReady = obj["jobs_ready"] as? Bool { s.jobsReady = jobsReady }
+        if let scheduled = obj["scheduled_off"] as? Bool { s.scheduledOff = scheduled }
         if let pct = obj["pct"] as? Int { s.pct = pct }
         if let ov = obj["override"] as? String, let mode = InternetMode(rawValue: ov) {
             s.override = mode
         }
         status[slug] = s
+    }
+
+    private func parseInternetSchedules(_ data: Data) {
+        guard let arr = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { return }
+        internetSchedules = arr.compactMap { o in
+            guard let id = o["id"] as? String else { return nil }
+            let days: Int
+            if let d = o["days"] as? Int { days = d }
+            else if let n = o["days"] as? NSNumber { days = n.intValue }
+            else { days = 0x7F }
+            return InternetSchedule(
+                id: id,
+                label: (o["label"] as? String) ?? id,
+                kids: (o["kids"] as? [String]) ?? [],
+                days: days,
+                offHour: (o["off_hour"] as? Int) ?? (o["off_hour"] as? NSNumber)?.intValue ?? 20,
+                offMinute: (o["off_minute"] as? Int) ?? (o["off_minute"] as? NSNumber)?.intValue ?? 0,
+                onHour: (o["on_hour"] as? Int) ?? (o["on_hour"] as? NSNumber)?.intValue ?? 7,
+                onMinute: (o["on_minute"] as? Int) ?? (o["on_minute"] as? NSNumber)?.intValue ?? 0,
+                enabled: (o["enabled"] as? Bool) ?? true
+            )
+        }
     }
 
     private func parseConfig(_ data: Data) {

@@ -84,6 +84,7 @@ void MqttBridge::ensureConnected() {
   client_.subscribe(MQTT_BONUS_SET);
   client_.subscribe(MQTT_RULES_SET);
   client_.subscribe(MQTT_PANEL_MESSAGE_SET);
+  client_.subscribe(MQTT_NET_SCHEDULES_SET);
   for (size_t k = 0; k < KID_COUNT; ++k) {
     client_.subscribe(topicRewardTally(k).c_str());
     client_.subscribe((topicInternet(k) + "/set").c_str());
@@ -184,6 +185,22 @@ void MqttBridge::handleMessage(char *topic, byte *payload, unsigned int length) 
     if (rewards_->applyRulesJson(body.c_str())) {
       pending_publish_rules_ = true;
       Serial.println("[mqtt] reward rules updated");
+    }
+    return;
+  }
+
+  if (t == MQTT_NET_SCHEDULES_SET) {
+    String body;
+    body.reserve(length + 1);
+    for (unsigned int i = 0; i < length; ++i) {
+      body += static_cast<char>(payload[i]);
+    }
+    if (state_->applyInternetSchedulesJson(body.c_str())) {
+      pending_publish_net_sched_ = true;
+      pending_publish_all_ = true;  // internet on/off may flip for some kids
+      Serial.println("[mqtt] internet schedules updated");
+    } else {
+      pending_publish_net_sched_ = true;  // echo current
     }
     return;
   }
@@ -307,6 +324,7 @@ void MqttBridge::publishKidSummary(size_t kid) {
   doc["pct"] = req_total ? (req_done * 100) / req_total : 100;
   doc["internet"] = ready;
   doc["jobs_ready"] = state_->internetReady(kid);
+  doc["scheduled_off"] = state_->internetScheduledOff(kid);
   const auto ov = state_->internetOverride(kid);
   doc["override"] = ov == JobState::InternetOverride::On    ? "on"
                     : ov == JobState::InternetOverride::Off ? "off"
@@ -369,6 +387,14 @@ void MqttBridge::publishRules() {
   }
   const String json = rewards_->rulesStateJson();
   client_.publish(MQTT_RULES_STATE, json.c_str(), true);
+}
+
+void MqttBridge::publishInternetSchedules() {
+  if (!client_.connected()) {
+    return;
+  }
+  const String json = state_->internetSchedulesJson();
+  client_.publish(MQTT_NET_SCHEDULES_STATE, json.c_str(), true);
 }
 
 void MqttBridge::publishClaim(size_t kid, size_t prize_index, uint32_t before, uint32_t after) {
@@ -488,6 +514,8 @@ void MqttBridge::publishAll() {
   mqttYieldUi();
   publishRules();
   mqttYieldUi();
+  publishInternetSchedules();
+  mqttYieldUi();
   size_t burst = 0;
   for (size_t k = 0; k < KID_COUNT; ++k) {
     for (size_t j = 0; j < JOB_COUNT; ++j) {
@@ -507,6 +535,7 @@ void MqttBridge::flushPendingPublishes() {
     pending_publish_config_ = false;
     pending_publish_catalog_ = false;
     pending_publish_rules_ = false;
+    pending_publish_net_sched_ = false;
     publishAll();
     return;
   }
@@ -523,6 +552,11 @@ void MqttBridge::flushPendingPublishes() {
   if (pending_publish_rules_) {
     pending_publish_rules_ = false;
     publishRules();
+    mqttYieldUi();
+  }
+  if (pending_publish_net_sched_) {
+    pending_publish_net_sched_ = false;
+    publishInternetSchedules();
     mqttYieldUi();
   }
 }
@@ -546,6 +580,8 @@ void MqttBridge::loop() {
       publishCatalog();
       mqttYieldUi();
       publishRules();
+      mqttYieldUi();
+      publishInternetSchedules();
       mqttYieldUi();
       publishSummaries();
     }

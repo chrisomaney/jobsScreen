@@ -124,6 +124,18 @@ void loop() {
       }
     }
   }
+  static uint32_t last_net_sched_ms = 0;
+  if (millis() - last_net_sched_ms > 15000) {
+    last_net_sched_ms = millis();
+    const uint8_t flipped = g_state.tickInternetSchedules();
+    if (flipped) {
+      for (size_t k = 0; k < KID_COUNT; ++k) {
+        if (flipped & (1u << k)) {
+          g_mqtt.publishKidSummary(k);
+        }
+      }
+    }
+  }
   g_mqtt.loop();
   g_ble.loop();
   g_ui.tick();

@@ -1,5 +1,7 @@
 #include "job_state.h"
 
+#include "clock_util.h"
+
 #include <ArduinoJson.h>
 #include <cstring>
 
@@ -319,6 +321,7 @@ void JobState::begin() {
     savePrizeCatalog();
   }
   loadInternetOverrides();
+  loadInternetSchedules();
   job_day_ = prefs_.getUInt("day", 0);
 }
 
@@ -667,19 +670,29 @@ void JobState::setInternetOverride(size_t kid, InternetOverride mode) {
   bump();
 }
 
+bool JobState::internetScheduledOff(size_t kid) const {
+  if (kid >= KID_COUNT) {
+    return false;
+  }
+  return scheduled_off_cache_[kid];
+}
+
 bool JobState::internetEffective(size_t kid) const {
   if (kid >= KID_COUNT) {
     return false;
   }
-  switch (internet_override_[kid]) {
-    case InternetOverride::On:
-      return true;
-    case InternetOverride::Off:
-      return false;
-    case InternetOverride::Auto:
-    default:
-      return internetReady(kid);
+  const InternetOverride ov = internet_override_[kid];
+  if (ov == InternetOverride::Off) {
+    return false;
   }
+  // Bedtime schedule wins unless a parent Force On'd for an emergency.
+  if (scheduled_off_cache_[kid] && ov != InternetOverride::On) {
+    return false;
+  }
+  if (ov == InternetOverride::On) {
+    return true;
+  }
+  return internetReady(kid);
 }
 
 void JobState::loadInternetOverrides() {
@@ -696,6 +709,169 @@ void JobState::persistInternetOverride(size_t kid) {
     return;
   }
   net_prefs_.putUChar((String("o") + kid).c_str(), static_cast<uint8_t>(internet_override_[kid]));
+}
+
+bool JobState::scheduleActiveNow(const NetSchedule &s, int hour, int minute, int wday) const {
+  if (!s.enabled) {
+    return false;
+  }
+  const int now = hour * 60 + minute;
+  const int off = static_cast<int>(s.off_hour) * 60 + s.off_minute;
+  const int on = static_cast<int>(s.on_hour) * 60 + s.on_minute;
+  if (off == on) {
+    return false;
+  }
+  if (off < on) {
+    // Same-day window (e.g. 13:00–15:00 homework block).
+    return ((s.days >> wday) & 1u) != 0 && now >= off && now < on;
+  }
+  // Overnight (e.g. 20:00 → 07:00): active after off on a selected day, or
+  // before on when yesterday was a selected day.
+  const int yday = (wday + 6) % 7;
+  if (((s.days >> wday) & 1u) != 0 && now >= off) {
+    return true;
+  }
+  if (((s.days >> yday) & 1u) != 0 && now < on) {
+    return true;
+  }
+  return false;
+}
+
+uint8_t JobState::tickInternetSchedules() {
+  int hour = 0;
+  int minute = 0;
+  int wday = 0;
+  if (!clock_local_parts(&hour, &minute, &wday)) {
+    return 0;
+  }
+  uint8_t changed = 0;
+  for (size_t k = 0; k < KID_COUNT; ++k) {
+    bool off = false;
+    for (size_t i = 0; i < net_schedule_count_; ++i) {
+      const NetSchedule &s = net_schedules_[i];
+      if (((s.kids_mask >> k) & 1u) == 0) {
+        continue;
+      }
+      if (scheduleActiveNow(s, hour, minute, wday)) {
+        off = true;
+        break;
+      }
+    }
+    if (off != scheduled_off_cache_[k]) {
+      scheduled_off_cache_[k] = off;
+      changed |= static_cast<uint8_t>(1u << k);
+    }
+  }
+  if (changed) {
+    bump();
+  }
+  return changed;
+}
+
+void JobState::loadInternetSchedules() {
+  net_sched_prefs_.begin("netsched", false);
+  net_schedule_count_ = 0;
+  const String blob = net_sched_prefs_.getString("json", "[]");
+  applyInternetSchedulesJson(blob.c_str());  // fills RAM; avoid re-save loop
+  // applyInternetSchedulesJson saves — for load we only want RAM. Reload without save:
+  // Actually applyInternetSchedulesJson will saveNv which is fine on boot.
+  for (size_t k = 0; k < KID_COUNT; ++k) {
+    scheduled_off_cache_[k] = false;
+  }
+  tickInternetSchedules();
+}
+
+void JobState::saveInternetSchedules() {
+  const String json = internetSchedulesJson();
+  net_sched_prefs_.putString("json", json);
+}
+
+bool JobState::applyInternetSchedulesJson(const char *json) {
+  JsonDocument doc;
+  if (deserializeJson(doc, json)) {
+    return false;
+  }
+  if (!doc.is<JsonArray>()) {
+    return false;
+  }
+  NetSchedule next[INTERNET_SCHEDULE_MAX]{};
+  size_t n = 0;
+  for (JsonObject o : doc.as<JsonArray>()) {
+    if (n >= INTERNET_SCHEDULE_MAX) {
+      break;
+    }
+    NetSchedule &s = next[n];
+    const char *id = o["id"] | "";
+    const char *label = o["label"] | "";
+    if (!id[0]) {
+      snprintf(s.id, sizeof(s.id), "sched_%u", static_cast<unsigned>(n));
+    } else {
+      strncpy(s.id, id, sizeof(s.id) - 1);
+    }
+    strncpy(s.label, label[0] ? label : s.id, sizeof(s.label) - 1);
+    s.days = o["days"] | 0x7F;
+    s.off_hour = constrain(static_cast<int>(o["off_hour"] | 20), 0, 23);
+    s.off_minute = constrain(static_cast<int>(o["off_minute"] | 0), 0, 59);
+    s.on_hour = constrain(static_cast<int>(o["on_hour"] | 7), 0, 23);
+    s.on_minute = constrain(static_cast<int>(o["on_minute"] | 0), 0, 59);
+    s.enabled = o["enabled"].isNull() ? true : o["enabled"].as<bool>();
+    s.kids_mask = 0;
+    if (o["kids"].is<JsonArray>()) {
+      for (JsonVariantConst item : o["kids"].as<JsonArrayConst>()) {
+        const char *slug = item.as<const char *>();
+        if (!slug) {
+          continue;
+        }
+        for (size_t k = 0; k < KID_COUNT; ++k) {
+          if (strcmp(KIDS[k].slug, slug) == 0) {
+            s.kids_mask |= static_cast<uint8_t>(1u << k);
+          }
+        }
+      }
+    } else {
+      s.kids_mask = 0xFF;
+    }
+    if (s.kids_mask == 0) {
+      continue;
+    }
+    ++n;
+  }
+  memcpy(net_schedules_, next, sizeof(net_schedules_));
+  net_schedule_count_ = n;
+  saveInternetSchedules();
+  // Recompute active windows immediately.
+  for (size_t k = 0; k < KID_COUNT; ++k) {
+    scheduled_off_cache_[k] = false;
+  }
+  tickInternetSchedules();
+  bump();
+  return true;
+}
+
+String JobState::internetSchedulesJson() const {
+  JsonDocument doc;
+  JsonArray arr = doc.to<JsonArray>();
+  for (size_t i = 0; i < net_schedule_count_; ++i) {
+    const NetSchedule &s = net_schedules_[i];
+    JsonObject o = arr.add<JsonObject>();
+    o["id"] = s.id;
+    o["label"] = s.label;
+    o["days"] = s.days;
+    o["off_hour"] = s.off_hour;
+    o["off_minute"] = s.off_minute;
+    o["on_hour"] = s.on_hour;
+    o["on_minute"] = s.on_minute;
+    o["enabled"] = s.enabled;
+    JsonArray kids = o["kids"].to<JsonArray>();
+    for (size_t k = 0; k < KID_COUNT; ++k) {
+      if ((s.kids_mask >> k) & 1u) {
+        kids.add(KIDS[k].slug);
+      }
+    }
+  }
+  String out;
+  serializeJson(doc, out);
+  return out;
 }
 
 uint32_t JobState::rewardTally(size_t kid) const {

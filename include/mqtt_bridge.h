@@ -15,6 +15,7 @@ public:
   void publishRewardEvent(size_t doer, size_t owner, size_t job);
   void publishCatalog();
   void publishRules();
+  void publishInternetSchedules();
   void publishClaim(size_t kid, size_t prize_index, uint32_t before, uint32_t after);
   void publishBonus(size_t kid, int32_t points, uint32_t before, uint32_t after);
   void publishCelebrateWinner(size_t kid, size_t prize_index, uint32_t after);
@@ -41,6 +42,7 @@ private:
   bool pending_publish_config_ = false;
   bool pending_publish_catalog_ = false;
   bool pending_publish_rules_ = false;
+  bool pending_publish_net_sched_ = false;
 
   void ensureConnected();
   void mqttYieldUi();

@@ -113,6 +113,34 @@
           <button class="pink" id="commonOff">Force Off</button>
         </div>
       </div>
+      <div class="card">
+        <h2>Internet-off schedules</h2>
+        <p class="hint">Turn internet off for chosen kids between Off→On (overnight OK). Force On still unlocks a kid during the window.</p>
+        <div id="netSchedules"></div>
+        <h3>Add / edit schedule</h3>
+        <input type="hidden" id="nsEditId">
+        <label>Name</label>
+        <input id="nsLabel" placeholder="School-night bedtime" value="Bedtime">
+        <label>Off at (hour : minute)</label>
+        <div class="actions">
+          <input id="nsOffH" type="number" min="0" max="23" value="20" style="width:90px">
+          <input id="nsOffM" type="number" min="0" max="59" value="0" style="width:90px">
+        </div>
+        <label>Back on at (hour : minute)</label>
+        <div class="actions">
+          <input id="nsOnH" type="number" min="0" max="23" value="7" style="width:90px">
+          <input id="nsOnM" type="number" min="0" max="59" value="0" style="width:90px">
+        </div>
+        <label>Days</label>
+        <div id="nsDays" class="actions"></div>
+        <label>Kids</label>
+        <div id="nsKids" class="actions"></div>
+        <label><input type="checkbox" id="nsEnabled" checked> Enabled</label>
+        <div class="actions">
+          <button class="mint" id="nsSave">Save schedule</button>
+          <button class="ghost" id="nsClear">Clear form</button>
+        </div>
+      </div>
     </div>
 
     <div id="tab-points" class="hidden">
@@ -260,6 +288,8 @@ const KIDS = [
 const DAY_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const TABS = ['prizes','internet','points','expect','jobs','behaviour','rules','message'];
 let client = null, catalog = [], jobs = [], jobPoints = {}, rules = [];
+let netSchedules = [];
+const DAY_SHORT = ['S','M','T','W','T','F','S'];
 let expBundle = 0, customSlotsFree = null, editingId = null;
 const tallies = Object.fromEntries(KIDS.map(k => [k.slug, 0]));
 const netStatus = Object.fromEntries(KIDS.map(k => [k.slug, { on:false, override:'auto', jobsReady:false }]));
@@ -475,7 +505,7 @@ function renderInternet() {
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
         <div style="display:flex;align-items:center;gap:10px">
           <span style="width:14px;height:14px;border-radius:50%;background:${k.color}"></span>
-          <div><strong>${k.name}</strong><div class="meta">${s.on?'ON':'OFF'} · override ${s.override||'auto'} · jobs ${s.jobsReady?'ready':'locked'}</div></div>
+          <div><strong>${k.name}</strong><div class="meta">${s.on?'ON':'OFF'}${s.scheduledOff?' · BEDTIME':''} · override ${s.override||'auto'} · jobs ${s.jobsReady?'ready':'locked'}</div></div>
         </div>
       </div>
       <div class="actions">
@@ -490,6 +520,71 @@ function renderInternet() {
     client.publish(`kids/${b.dataset.net}/internet/set`, b.dataset.mode);
     toast(`${b.dataset.net}: ${b.dataset.mode}`);
   });
+  renderNetSchedules();
+}
+function ensureNetSchedForm() {
+  if ($('nsDays').dataset.ready) return;
+  $('nsDays').innerHTML = DAY_SHORT.map((d,i) =>
+    `<label style="display:inline-flex;gap:4px;align-items:center"><input type="checkbox" data-nsday="${i}" checked> ${d}</label>`
+  ).join(' ');
+  $('nsKids').innerHTML = KIDS.map(k =>
+    `<label style="display:inline-flex;gap:4px;align-items:center"><input type="checkbox" data-nskid="${k.slug}" checked> ${escapeHtml(k.name)}</label>`
+  ).join(' ');
+  $('nsDays').dataset.ready = '1';
+}
+function renderNetSchedules() {
+  ensureNetSchedForm();
+  $('netSchedules').innerHTML = netSchedules.map((s,i) => {
+    const days = DAY_SHORT.filter((_,d) => (s.days>>d)&1).join('');
+    const kids = (s.kids||[]).map(slug => (KIDS.find(k=>k.slug===slug)||{}).name || slug).join(', ') || 'nobody';
+    const off = `${String(s.off_hour??20).padStart(2,'0')}:${String(s.off_minute??0).padStart(2,'0')}`;
+    const on = `${String(s.on_hour??7).padStart(2,'0')}:${String(s.on_minute??0).padStart(2,'0')}`;
+    return `<div class="rule">
+      <div>
+        <strong>${escapeHtml(s.label||s.id)}</strong>
+        <div class="sub" style="margin:0">${off} → ${on} · ${days || 'no days'} · ${escapeHtml(kids)}${s.enabled===false?' · OFF':''}</div>
+      </div>
+      <div class="actions">
+        <button class="ghost" data-nsedit="${i}">Edit</button>
+        <button class="pink" data-nsdel="${i}">Remove</button>
+      </div>
+    </div>`;
+  }).join('') || '<p class="sub">No schedules yet</p>';
+  $('netSchedules').querySelectorAll('[data-nsdel]').forEach(b => b.onclick = () => {
+    netSchedules.splice(+b.dataset.nsdel, 1);
+    publishNetSchedules();
+  });
+  $('netSchedules').querySelectorAll('[data-nsedit]').forEach(b => b.onclick = () => loadNetSchedForm(netSchedules[+b.dataset.nsedit]));
+}
+function loadNetSchedForm(s) {
+  ensureNetSchedForm();
+  $('nsEditId').value = s.id || '';
+  $('nsLabel').value = s.label || '';
+  $('nsOffH').value = s.off_hour ?? 20;
+  $('nsOffM').value = s.off_minute ?? 0;
+  $('nsOnH').value = s.on_hour ?? 7;
+  $('nsOnM').value = s.on_minute ?? 0;
+  $('nsEnabled').checked = s.enabled !== false;
+  const dayMask = s.days ?? 0x7F;
+  $('nsDays').querySelectorAll('[data-nsday]').forEach(c => { c.checked = !!((dayMask >> +c.dataset.nsday) & 1); });
+  const set = new Set(s.kids || []);
+  $('nsKids').querySelectorAll('[data-nskid]').forEach(c => { c.checked = set.has(c.dataset.nskid); });
+}
+function clearNetSchedForm() {
+  $('nsEditId').value = '';
+  $('nsLabel').value = 'Bedtime';
+  $('nsOffH').value = 20; $('nsOffM').value = 0;
+  $('nsOnH').value = 7; $('nsOnM').value = 0;
+  $('nsEnabled').checked = true;
+  ensureNetSchedForm();
+  $('nsDays').querySelectorAll('input').forEach(c => c.checked = true);
+  $('nsKids').querySelectorAll('input').forEach(c => c.checked = true);
+}
+function publishNetSchedules() {
+  if (!client?.connected) return alert('Connect first');
+  client.publish('kids/internet/schedules/set', JSON.stringify(netSchedules));
+  toast('Schedules saved');
+  renderNetSchedules();
 }
 function renderExpect() {
   $('expBundle').value = expBundle;
@@ -628,7 +723,7 @@ function connect() {
     setStatus(true, 'Connected');
     $('connectCard').classList.add('hidden');
     $('app').classList.remove('hidden');
-    client.subscribe(['kids/rewards/catalog','kids/rewards/rules/state','kids/config/state']);
+    client.subscribe(['kids/rewards/catalog','kids/rewards/rules/state','kids/config/state','kids/internet/schedules/state']);
     KIDS.forEach(k => {
       client.subscribe(`kids/${k.slug}/rewards/tally`);
       client.subscribe(`kids/${k.slug}/progress`);
@@ -638,6 +733,10 @@ function connect() {
   client.on('close', () => setStatus(false, 'Offline'));
   client.on('message', (topic, buf) => {
     const body = buf.toString();
+    if (topic === 'kids/internet/schedules/state') {
+      try { netSchedules = JSON.parse(body) || []; } catch { netSchedules = []; }
+      renderNetSchedules();
+    }
     if (topic === 'kids/rewards/catalog') {
       try { catalog = JSON.parse(body) || []; } catch { catalog = []; }
       renderPrizes();
@@ -695,6 +794,7 @@ function connect() {
           netStatus[k.slug].on = !!d.internet;
           netStatus[k.slug].jobsReady = !!d.jobs_ready;
           netStatus[k.slug].override = d.override || 'auto';
+          netStatus[k.slug].scheduledOff = !!d.scheduled_off;
           if (typeof d.rewards === 'number') tallies[k.slug] = d.rewards;
           renderInternet(); renderKids();
         } catch (_) {}
@@ -771,6 +871,31 @@ $('commonOff').onclick = () => {
   if (!client?.connected) return alert('Connect first');
   client.publish('kids/common/internet/set', 'off');
   toast('common → off');
+};
+$('nsClear').onclick = () => clearNetSchedForm();
+$('nsSave').onclick = () => {
+  ensureNetSchedForm();
+  let days = 0;
+  $('nsDays').querySelectorAll('[data-nsday]').forEach(c => { if (c.checked) days |= (1 << +c.dataset.nsday); });
+  const kids = [...$('nsKids').querySelectorAll('[data-nskid]:checked')].map(c => c.dataset.nskid);
+  if (!kids.length) return alert('Pick at least one kid');
+  if (!days) return alert('Pick at least one day');
+  const id = $('nsEditId').value || ('sched_' + Date.now().toString(36));
+  const row = {
+    id,
+    label: $('nsLabel').value.trim() || 'Internet off',
+    days,
+    off_hour: Math.min(23, Math.max(0, parseInt($('nsOffH').value,10)||0)),
+    off_minute: Math.min(59, Math.max(0, parseInt($('nsOffM').value,10)||0)),
+    on_hour: Math.min(23, Math.max(0, parseInt($('nsOnH').value,10)||0)),
+    on_minute: Math.min(59, Math.max(0, parseInt($('nsOnM').value,10)||0)),
+    kids,
+    enabled: $('nsEnabled').checked,
+  };
+  const idx = netSchedules.findIndex(s => s.id === id);
+  if (idx >= 0) netSchedules[idx] = row; else netSchedules.push(row);
+  publishNetSchedules();
+  clearNetSchedForm();
 };
 $('behReward').onclick = () => sendBehaviour('+');
 $('behPenalty').onclick = () => sendBehaviour('-');

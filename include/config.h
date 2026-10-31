@@ -150,6 +150,12 @@ static const size_t REWARD_RULE_MAX = 16;
 //     {"remove":["custom_0"]}
 static const char *MQTT_CONFIG_STATE = "kids/config/state";
 static const char *MQTT_CONFIG_SET = "kids/config/set";
+// Bedtime / internet-off windows (per kid):
+//   kids/internet/schedules/state  retained JSON array
+//   kids/internet/schedules/set    replace full list
+static const char *MQTT_NET_SCHEDULES_STATE = "kids/internet/schedules/state";
+static const char *MQTT_NET_SCHEDULES_SET = "kids/internet/schedules/set";
+static const size_t INTERNET_SCHEDULE_MAX = 8;
 
 // UI colours — matte black / glass / dark grey / white (minimal dark)
 static const uint32_t COL_BG           = 0x0A0A0A;  // matte black
