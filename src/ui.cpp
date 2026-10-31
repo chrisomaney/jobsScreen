@@ -78,8 +78,10 @@ void paint_hud_backdrop(lv_obj_t *parent) {
   make_bar(parent, LCD_H_RES - 72, 16, 48, 2, COL_BORDER, LV_OPA_COVER);
 }
 
-const uint32_t AD_RIMS[] = {0x3A3A3A, 0x4A4A4A, 0x5A5A5A, 0x2E2E2E, 0x6A6A6A};
+// Bright prize-banner accents (cycle per ad) — rest of UI stays dark glass.
+const uint32_t AD_RIMS[] = {0x22D3EE, 0xA78BFA, 0x34D399, 0xF472B6, 0xFBBF24};
 const size_t AD_RIM_COUNT = sizeof(AD_RIMS) / sizeof(AD_RIMS[0]);
+lv_obj_t *prize_rim_bar_ = nullptr;
 
 void style_glass_btn(lv_obj_t *btn) {
   lv_obj_set_style_bg_color(btn, c(COL_BTN), 0);
@@ -202,7 +204,7 @@ void AppUi::buildIdle() {
   lv_obj_clear_flag(ad_layer_, LV_OBJ_FLAG_SCROLLABLE);
   paint_hud_backdrop(ad_layer_);
 
-  lv_obj_t *brand = make_label(ad_layer_, "PRIZE STATION", &lv_font_montserrat_24, COL_TEXT);
+  lv_obj_t *brand = make_label(ad_layer_, "PRIZE STATION", &lv_font_montserrat_24, COL_PRIZE_ACCENT);
   lv_obj_align(brand, LV_ALIGN_TOP_MID, 0, 18);
 
   prize_card_ = lv_obj_create(ad_layer_);
@@ -210,10 +212,11 @@ void AppUi::buildIdle() {
   lv_obj_set_pos(prize_card_, (LCD_H_RES - 720) / 2, CARD_Y);
   style_glass_card(prize_card_);
   lv_obj_set_style_bg_color(prize_card_, c(COL_PRIZE_CARD), 0);
+  lv_obj_set_style_border_width(prize_card_, 3, 0);
   lv_obj_set_style_radius(prize_card_, 16, 0);
   lv_obj_set_style_pad_all(prize_card_, 12, 0);
   lv_obj_clear_flag(prize_card_, LV_OBJ_FLAG_SCROLLABLE);
-  make_bar(prize_card_, 0, 0, 720, 2, COL_BORDER, LV_OPA_COVER);
+  prize_rim_bar_ = make_bar(prize_card_, 0, 0, 720, 5, AD_RIMS[0], LV_OPA_COVER);
 
   prize_name_ = make_label(prize_card_, "", &lv_font_montserrat_28, COL_TEXT);
   lv_label_set_long_mode(prize_name_, LV_LABEL_LONG_WRAP);
@@ -221,7 +224,7 @@ void AppUi::buildIdle() {
   lv_obj_set_style_text_align(prize_name_, LV_TEXT_ALIGN_CENTER, 0);
   lv_obj_align(prize_name_, LV_ALIGN_TOP_MID, 0, 28);
 
-  prize_cost_ = make_label(prize_card_, "", &lv_font_montserrat_24, COL_MUTED);
+  prize_cost_ = make_label(prize_card_, "", &lv_font_montserrat_24, COL_PRIZE_COST);
   lv_obj_align(prize_cost_, LV_ALIGN_BOTTOM_MID, 0, -16);
 
   want_btn_ = lv_btn_create(ad_layer_);
@@ -259,10 +262,12 @@ void AppUi::buildIdle() {
     score_chips_[i] = lv_obj_create(score_row_);
     lv_obj_set_size(score_chips_[i], chip_w, 56);
     style_glass_card(score_chips_[i]);
+    lv_obj_set_style_border_width(score_chips_[i], 3, 0);
     lv_obj_set_style_border_color(score_chips_[i], c(KIDS[i].color), 0);
     lv_obj_set_style_radius(score_chips_[i], 10, 0);
     lv_obj_set_style_pad_all(score_chips_[i], 2, 0);
     lv_obj_clear_flag(score_chips_[i], LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+    make_bar(score_chips_[i], 0, 0, chip_w, 4, KIDS[i].color, LV_OPA_COVER);
     lv_obj_t *chip = make_label(score_chips_[i], "", &lv_font_montserrat_14, COL_TEXT);
     lv_label_set_long_mode(chip, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(chip, chip_w - 8);
@@ -297,6 +302,7 @@ void AppUi::buildIdle() {
     const int col = static_cast<int>(i) % cols;
     lv_obj_set_pos(kid_btns_[i], start_x + col * (btn_w + gap_x), 90 + row * (btn_h + gap_y));
     style_glass_btn(kid_btns_[i]);
+    lv_obj_set_style_border_width(kid_btns_[i], 3, 0);
     lv_obj_set_style_border_color(kid_btns_[i], c(KIDS[i].color), 0);
     lv_obj_set_style_radius(kid_btns_[i], 12, 0);
     lv_obj_add_event_cb(kid_btns_[i], onPrizeKid, LV_EVENT_CLICKED, reinterpret_cast<void *>(i));
@@ -495,7 +501,7 @@ void AppUi::buildKidScaffold() {
   lv_obj_align(progress_bar_, LV_ALIGN_TOP_RIGHT, -12, 62);
   lv_bar_set_range(progress_bar_, 0, 100);
   lv_obj_set_style_bg_color(progress_bar_, c(COL_CARD), LV_PART_MAIN);
-  lv_obj_set_style_bg_color(progress_bar_, c(COL_TEXT), LV_PART_INDICATOR);
+  lv_obj_set_style_bg_color(progress_bar_, c(COL_DONE), LV_PART_INDICATOR);
   lv_obj_set_style_border_width(progress_bar_, 1, LV_PART_MAIN);
   lv_obj_set_style_border_color(progress_bar_, c(COL_BORDER), LV_PART_MAIN);
   lv_obj_set_style_radius(progress_bar_, 7, LV_PART_MAIN);
@@ -717,19 +723,23 @@ void AppUi::updateJobRow(size_t job) {
   lv_obj_t *lbl = lv_obj_get_child(btn, 0);
   if (done) {
     lv_obj_set_style_bg_color(btn, c(COL_BTN_ACTIVE), 0);
+    lv_obj_set_style_border_color(btn, c(COL_DONE), 0);
     if (lbl) {
       lv_label_set_text(lbl, LV_SYMBOL_OK " Done");
+      lv_obj_set_style_text_color(lbl, c(COL_TEXT), 0);
     }
     if (job_rows_[job]) {
-      lv_obj_set_style_bg_color(job_rows_[job], c(COL_GLASS), 0);
-      lv_obj_set_style_border_color(job_rows_[job], c(COL_TEXT), 0);
+      lv_obj_set_style_bg_color(job_rows_[job], c(COL_DONE_ROW), 0);
+      lv_obj_set_style_border_color(job_rows_[job], c(COL_DONE), 0);
     }
   } else {
     const uint32_t accent =
         (JobState::jobCategory(job) == JobCategory::Expectation) ? COL_EXPECT : COL_PAID;
     lv_obj_set_style_bg_color(btn, c(COL_BTN), 0);
+    lv_obj_set_style_border_color(btn, c(COL_BORDER), 0);
     if (lbl) {
       lv_label_set_text(lbl, "Done");
+      lv_obj_set_style_text_color(lbl, c(COL_TEXT), 0);
     }
     if (job_rows_[job]) {
       lv_obj_set_style_bg_color(job_rows_[job], c(COL_CARD), 0);
@@ -752,7 +762,7 @@ void AppUi::updateKidHeader() {
   lv_bar_set_value(progress_bar_, pct, LV_ANIM_OFF);
 
   char buf[64];
-  snprintf(buf, sizeof(buf), "%u/%u done - hold Done to undo", static_cast<unsigned>(cat_done),
+  snprintf(buf, sizeof(buf), "%u/%u done - hold green to undo", static_cast<unsigned>(cat_done),
            static_cast<unsigned>(cat_total));
   lv_label_set_text(progress_label_, buf);
 
@@ -908,6 +918,12 @@ void AppUi::setIdleMode(IdleMode m) {
 void AppUi::cyclePrizeRim() {
   const uint32_t rim = AD_RIMS[ad_index_ % AD_RIM_COUNT];
   lv_obj_set_style_border_color(prize_card_, c(rim), 0);
+  if (prize_rim_bar_) {
+    lv_obj_set_style_bg_color(prize_rim_bar_, c(rim), 0);
+  }
+  if (prize_cost_) {
+    lv_obj_set_style_text_color(prize_cost_, c(rim), 0);
+  }
 }
 
 void AppUi::refreshPrizeScores() {
@@ -985,13 +1001,13 @@ void AppUi::showPrizeSplashFromState() {
   if (s.kind == JobState::SplashKind::None) {
     return;
   }
-  uint32_t tint = COL_GLASS;
+  uint32_t tint = COL_PRIZE_WIN;
   const char *stars = "* * * JACKPOT * * *";
   if (s.kind == JobState::SplashKind::Bonus) {
-    tint = COL_BTN_ACTIVE;
+    tint = COL_PRIZE_BONUS;
     stars = "* * * BONUS DROP * * *";
   } else if (s.kind == JobState::SplashKind::KeepGoing) {
-    tint = COL_PRIZE_SKY;
+    tint = COL_PRIZE_KEEP;
     stars = "SIGNAL WEAK — KEEP GOING";
   }
   lv_obj_set_style_bg_color(splash_layer_, c(COL_PRIZE_BG), 0);

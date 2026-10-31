@@ -13,11 +13,11 @@ struct KidProfile {
 };
 
 static const KidProfile KIDS[] = {
-  {"Xavier",  "xavier",  0x8A8A8A},  // muted grey accents on dark glass
-  {"Presley", "presley", 0xA3A3A3},
-  {"Jax",     "jax",     0xB8B8B8},
-  {"Banx",    "banx",    0xD4D4D4},
-  {"Hazel",   "hazel",   0xE5E5E5},
+  {"Xavier",  "xavier",  0x3B82F6},  // bright blue — prize score chips / picker
+  {"Presley", "presley", 0xEC4899},  // pink
+  {"Jax",     "jax",     0xF59E0B},  // amber
+  {"Banx",    "banx",    0x22C55E},  // green
+  {"Hazel",   "hazel",   0xA855F7},  // violet
 };
 
 struct PrizeDef {
@@ -158,24 +158,25 @@ static const uint32_t COL_GLASS        = 0x222222;  // slightly lifted glass
 static const uint32_t COL_BORDER       = 0x3A3A3A;  // thin glass edge
 static const uint32_t COL_EXPECT       = 0xA3A3A3;  // soft grey accent — Expectations
 static const uint32_t COL_PAID         = 0xD4D4D4;  // lighter grey — Paid jobs
-static const uint32_t COL_DONE         = 0xFFFFFF;  // done / success reads as white
+static const uint32_t COL_DONE         = 0x22C55E;  // bright green — done / success
+static const uint32_t COL_DONE_ROW     = 0x0F2A1A;  // dark green glass behind done rows
 static const uint32_t COL_TEXT         = 0xFFFFFF;
 static const uint32_t COL_MUTED        = 0x8A8A8A;
 static const uint32_t COL_BTN          = 0x2A2A2A;  // dark grey buttons
 static const uint32_t COL_BTN_PRESSED  = 0x3F3F3F;
-static const uint32_t COL_BTN_ACTIVE   = 0x404040;  // completed state
+static const uint32_t COL_BTN_ACTIVE   = 0x16A34A;  // bright green Done button when complete
 
 // Prize idle — same dark glass language (no neon)
 static const uint32_t COL_PRIZE_BG = 0x0A0A0A;
 static const uint32_t COL_PRIZE_BG2 = 0x121212;
 static const uint32_t COL_PRIZE_SKY = 0x141414;
 static const uint32_t COL_PRIZE_CARD = 0x1C1C1C;
-static const uint32_t COL_PRIZE_ACCENT = 0xE5E5E5;
-static const uint32_t COL_PRIZE_ACCENT2 = 0xFFFFFF;
-static const uint32_t COL_PRIZE_COST = 0xD4D4D4;
-static const uint32_t COL_PRIZE_WIN = 0xFFFFFF;
-static const uint32_t COL_PRIZE_BONUS = 0xC0C0C0;
-static const uint32_t COL_PRIZE_KEEP = 0xA3A3A3;
+static const uint32_t COL_PRIZE_ACCENT = 0x22D3EE;   // bright cyan — banner accents
+static const uint32_t COL_PRIZE_ACCENT2 = 0x67E8F9;
+static const uint32_t COL_PRIZE_COST = 0xFDE047;     // bright gold — credits line
+static const uint32_t COL_PRIZE_WIN = 0x10B981;
+static const uint32_t COL_PRIZE_BONUS = 0xF43F5E;
+static const uint32_t COL_PRIZE_KEEP = 0x3B82F6;
 static const uint32_t COL_PRIZE_LINE = 0x2A2A2A;
 static const uint32_t COL_PRIZE_BTN_BACK = 0x2A2A2A;
 
