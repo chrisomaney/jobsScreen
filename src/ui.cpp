@@ -29,6 +29,25 @@ void strip_chrome(lv_obj_t *o) {
   lv_obj_set_style_radius(o, 0, 0);
 }
 
+// Full-bleed screen: theme padding + accidental scroll was shifting/mirroring the UI.
+void prep_screen(lv_obj_t *s) {
+  strip_chrome(s);
+  lv_obj_set_size(s, LCD_H_RES, LCD_V_RES);
+  lv_obj_set_pos(s, 0, 0);
+  lv_obj_clear_flag(s, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_clear_flag(s, LV_OBJ_FLAG_SCROLL_CHAIN);
+  lv_obj_clear_flag(s, LV_OBJ_FLAG_SCROLL_ELASTIC);
+  lv_obj_clear_flag(s, LV_OBJ_FLAG_GESTURE_BUBBLE);
+  lv_obj_set_scroll_dir(s, LV_DIR_NONE);
+}
+
+void harden_scroll_list(lv_obj_t *list) {
+  // List may scroll vertically; never chain that drag onto the parent screen.
+  lv_obj_clear_flag(list, LV_OBJ_FLAG_SCROLL_CHAIN);
+  lv_obj_clear_flag(list, LV_OBJ_FLAG_SCROLL_ELASTIC);
+  lv_obj_set_scroll_dir(list, LV_DIR_VER);
+}
+
 void style_space_bg(lv_obj_t *o) {
   strip_chrome(o);
   lv_obj_set_style_bg_color(o, c(COL_PRIZE_BG), 0);
@@ -160,7 +179,8 @@ void AppUi::styleTab(lv_obj_t *btn, bool active, uint32_t accent) {
 void AppUi::buildIdle() {
   screen_idle_ = lv_obj_create(nullptr);
   style_space_bg(screen_idle_);
-  lv_obj_clear_flag(screen_idle_, LV_OBJ_FLAG_SCROLLABLE);
+  prep_screen(screen_idle_);
+  style_space_bg(screen_idle_);  // re-apply bg after prep clears styles we need
 
   ad_layer_ = lv_obj_create(screen_idle_);
   style_space_bg(ad_layer_);
@@ -361,9 +381,9 @@ void AppUi::refreshMessageOverlay() {
 
 void AppUi::buildHome() {
   screen_home_ = lv_obj_create(nullptr);
+  prep_screen(screen_home_);
   lv_obj_set_style_bg_color(screen_home_, c(COL_BG), 0);
   lv_obj_set_style_bg_opa(screen_home_, LV_OPA_COVER, 0);
-  lv_obj_clear_flag(screen_home_, LV_OBJ_FLAG_SCROLLABLE);
 
   lv_obj_t *home_title = make_label(screen_home_, "Jobs Sign-off", &lv_font_montserrat_28, COL_TEXT);
   lv_obj_align(home_title, LV_ALIGN_TOP_MID, 0, 8);
@@ -422,9 +442,9 @@ void AppUi::buildHome() {
 
 void AppUi::buildKidScaffold() {
   screen_kid_ = lv_obj_create(nullptr);
+  prep_screen(screen_kid_);
   lv_obj_set_style_bg_color(screen_kid_, c(COL_BG), 0);
   lv_obj_set_style_bg_opa(screen_kid_, LV_OPA_COVER, 0);
-  lv_obj_clear_flag(screen_kid_, LV_OBJ_FLAG_SCROLLABLE);
 
   lv_obj_t *back = lv_btn_create(screen_kid_);
   lv_obj_set_size(back, 96, 40);
@@ -498,13 +518,14 @@ void AppUi::buildKidScaffold() {
   lv_obj_set_flex_flow(job_list_, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_style_pad_row(job_list_, 6, 0);
   lv_obj_set_scrollbar_mode(job_list_, LV_SCROLLBAR_MODE_AUTO);
+  harden_scroll_list(job_list_);
 }
 
 void AppUi::buildNotDoneScaffold() {
   screen_not_done_ = lv_obj_create(nullptr);
+  prep_screen(screen_not_done_);
   lv_obj_set_style_bg_color(screen_not_done_, c(COL_BG), 0);
   lv_obj_set_style_bg_opa(screen_not_done_, LV_OPA_COVER, 0);
-  lv_obj_clear_flag(screen_not_done_, LV_OBJ_FLAG_SCROLLABLE);
 
   lv_obj_t *back = lv_btn_create(screen_not_done_);
   lv_obj_set_size(back, 96, 40);
@@ -531,13 +552,14 @@ void AppUi::buildNotDoneScaffold() {
   lv_obj_set_flex_flow(not_done_list_, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_style_pad_row(not_done_list_, 6, 0);
   lv_obj_set_scrollbar_mode(not_done_list_, LV_SCROLLBAR_MODE_AUTO);
+  harden_scroll_list(not_done_list_);
 }
 
 void AppUi::buildDoerPicker() {
   screen_doer_ = lv_obj_create(nullptr);
+  prep_screen(screen_doer_);
   lv_obj_set_style_bg_color(screen_doer_, c(COL_BG), 0);
   lv_obj_set_style_bg_opa(screen_doer_, LV_OPA_COVER, 0);
-  lv_obj_clear_flag(screen_doer_, LV_OBJ_FLAG_SCROLLABLE);
 
   doer_prompt_ = make_label(screen_doer_, "Who did this job?", &lv_font_montserrat_24, COL_TEXT);
   lv_obj_align(doer_prompt_, LV_ALIGN_TOP_MID, 0, 40);
@@ -634,6 +656,7 @@ void AppUi::updateHomeRemainders() {
 
 void AppUi::rebuildJobList() {
   lv_obj_clean(job_list_);
+  lv_obj_scroll_to_y(job_list_, 0, LV_ANIM_OFF);
   for (size_t j = 0; j < JOB_COUNT; ++j) {
     done_btns_[j] = nullptr;
     job_rows_[j] = nullptr;
@@ -742,6 +765,7 @@ void AppUi::updateKidHeader() {
 
 void AppUi::rebuildNotDoneList() {
   lv_obj_clean(not_done_list_);
+  lv_obj_scroll_to_y(not_done_list_, 0, LV_ANIM_OFF);
 
   size_t total_left = 0;
   for (size_t k = 0; k < KID_COUNT; ++k) {
