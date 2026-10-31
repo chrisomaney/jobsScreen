@@ -17,7 +17,7 @@ struct CatalogueView: View {
                         Keyboard.dismiss()
                         admin.savePoints()
                     }
-                        .disabled(!admin.connected)
+                        .disabled(!admin.connected) // points still need MQTT / Rewards engine
                 } header: {
                     Text("Bundle")
                 } footer: {
@@ -55,7 +55,7 @@ struct CatalogueView: View {
                         newPts = "1"
                         newRequired = true
                     }
-                    .disabled(!admin.connected || (admin.customSlotsFree ?? 1) == 0)
+                    .disabled(!admin.canSaveJobs || (admin.customSlotsFree ?? 1) == 0)
                     if let free = admin.customSlotsFree {
                         Text(free == 0 ? "No free custom slots" : "\(free) custom slot(s) free")
                             .font(.caption)
@@ -139,17 +139,17 @@ struct JobEditView: View {
                     Keyboard.dismiss()
                     admin.saveJob(job)
                     if job.cat != "paid" { admin.jobPoints[job.id] = 0 }
-                    admin.savePoints()
+                    if admin.connected { admin.savePoints() }
                     dismiss()
                 }
-                .disabled(!admin.connected)
+                .disabled(!admin.canSaveJobs)
                 if job.custom {
                     Button("Remove from panel", role: .destructive) {
                         Keyboard.dismiss()
                         admin.removeJob(id: job.id)
                         dismiss()
                     }
-                    .disabled(!admin.connected)
+                    .disabled(!admin.canSaveJobs)
                 }
             }
         }

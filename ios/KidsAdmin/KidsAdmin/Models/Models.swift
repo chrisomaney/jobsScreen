@@ -29,8 +29,41 @@ struct KidLiveStatus: Equatable {
     var tally: Int = 0
     var internetOn: Bool = false
     var jobsReady: Bool = false
+    var scheduledOff: Bool = false
     var override: InternetMode = .auto
     var pct: Int = 0
+}
+
+struct InternetSchedule: Identifiable, Equatable {
+    var id: String
+    var label: String
+    var kids: [String]
+    /// bit0 = Sunday … bit6 = Saturday
+    var days: Int
+    var offHour: Int
+    var offMinute: Int
+    var onHour: Int
+    var onMinute: Int
+    var enabled: Bool
+
+    static let dayLetters = ["S", "M", "T", "W", "T", "F", "S"]
+
+    func dayOn(_ index: Int) -> Bool {
+        (days & (1 << index)) != 0
+    }
+
+    mutating func setDay(_ index: Int, on: Bool) {
+        if on { days |= (1 << index) }
+        else { days &= ~(1 << index) }
+    }
+
+    var summary: String {
+        let off = String(format: "%02d:%02d", offHour, offMinute)
+        let on = String(format: "%02d:%02d", onHour, onMinute)
+        let kidNames = kids.compactMap { slug in AdminKid.all.first(where: { $0.slug == slug })?.name }
+        let who = kidNames.isEmpty ? "nobody" : kidNames.joined(separator: ", ")
+        return "\(off)→\(on) · \(who)"
+    }
 }
 
 struct JobItem: Identifiable, Equatable {

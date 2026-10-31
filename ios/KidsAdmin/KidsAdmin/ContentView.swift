@@ -14,6 +14,10 @@ struct ContentView: View {
                 .tabItem { Label("Behaviour", systemImage: "star.bubble") }
             CatalogueView()
                 .tabItem { Label("Jobs", systemImage: "checklist") }
+            WebAdminView()
+                .tabItem { Label("Website", systemImage: "safari") }
+            BleJobsView()
+                .tabItem { Label("Bluetooth", systemImage: "antenna.radiowaves.left.and.right") }
             ConnectView()
                 .tabItem { Label("Connect", systemImage: "gearshape") }
         }

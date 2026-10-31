@@ -41,11 +41,41 @@ void prep_screen(lv_obj_t *s) {
   lv_obj_set_scroll_dir(s, LV_DIR_NONE);
 }
 
+// Re-pin a live screen after heavy rebuilds (config save) so it can't stay shifted.
+void lock_screen_layout(lv_obj_t *s) {
+  if (!s) {
+    return;
+  }
+  lv_obj_set_size(s, LCD_H_RES, LCD_V_RES);
+  lv_obj_set_pos(s, 0, 0);
+  lv_obj_scroll_to(s, 0, 0, LV_ANIM_OFF);
+  lv_obj_clear_flag(s, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_clear_flag(s, LV_OBJ_FLAG_SCROLL_CHAIN);
+  lv_obj_clear_flag(s, LV_OBJ_FLAG_SCROLL_ELASTIC);
+  lv_obj_clear_flag(s, LV_OBJ_FLAG_GESTURE_BUBBLE);
+  lv_obj_set_scroll_dir(s, LV_DIR_NONE);
+}
+
 void harden_scroll_list(lv_obj_t *list) {
   // List may scroll vertically; never chain that drag onto the parent screen.
   lv_obj_clear_flag(list, LV_OBJ_FLAG_SCROLL_CHAIN);
   lv_obj_clear_flag(list, LV_OBJ_FLAG_SCROLL_ELASTIC);
+  lv_obj_clear_flag(list, LV_OBJ_FLAG_GESTURE_BUBBLE);
   lv_obj_set_scroll_dir(list, LV_DIR_VER);
+}
+
+void harden_layer(lv_obj_t *layer) {
+  if (!layer) {
+    return;
+  }
+  lv_obj_set_size(layer, LCD_H_RES, LCD_V_RES);
+  lv_obj_set_pos(layer, 0, 0);
+  lv_obj_scroll_to(layer, 0, 0, LV_ANIM_OFF);
+  lv_obj_clear_flag(layer, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_clear_flag(layer, LV_OBJ_FLAG_SCROLL_CHAIN);
+  lv_obj_clear_flag(layer, LV_OBJ_FLAG_SCROLL_ELASTIC);
+  lv_obj_clear_flag(layer, LV_OBJ_FLAG_GESTURE_BUBBLE);
+  lv_obj_set_scroll_dir(layer, LV_DIR_NONE);
 }
 
 void style_space_bg(lv_obj_t *o) {
@@ -199,9 +229,7 @@ void AppUi::buildIdle() {
 
   ad_layer_ = lv_obj_create(screen_idle_);
   style_space_bg(ad_layer_);
-  lv_obj_set_size(ad_layer_, LCD_H_RES, LCD_V_RES);
-  lv_obj_set_pos(ad_layer_, 0, 0);
-  lv_obj_clear_flag(ad_layer_, LV_OBJ_FLAG_SCROLLABLE);
+  harden_layer(ad_layer_);
   paint_hud_backdrop(ad_layer_);
 
   lv_obj_t *brand = make_label(ad_layer_, "PRIZE STATION", &lv_font_montserrat_24, COL_PRIZE_ACCENT);
@@ -278,10 +306,8 @@ void AppUi::buildIdle() {
 
   picker_layer_ = lv_obj_create(screen_idle_);
   style_space_bg(picker_layer_);
-  lv_obj_set_size(picker_layer_, LCD_H_RES, LCD_V_RES);
-  lv_obj_set_pos(picker_layer_, 0, 0);
+  harden_layer(picker_layer_);
   lv_obj_add_flag(picker_layer_, LV_OBJ_FLAG_HIDDEN);
-  lv_obj_clear_flag(picker_layer_, LV_OBJ_FLAG_SCROLLABLE);
   paint_hud_backdrop(picker_layer_);
 
   picker_title_ = make_label(picker_layer_, "SELECT OPERATOR", &lv_font_montserrat_28, COL_PRIZE_ACCENT);
@@ -322,10 +348,8 @@ void AppUi::buildIdle() {
 
   splash_layer_ = lv_obj_create(screen_idle_);
   style_space_bg(splash_layer_);
-  lv_obj_set_size(splash_layer_, LCD_H_RES, LCD_V_RES);
-  lv_obj_set_pos(splash_layer_, 0, 0);
+  harden_layer(splash_layer_);
   lv_obj_add_flag(splash_layer_, LV_OBJ_FLAG_HIDDEN);
-  lv_obj_clear_flag(splash_layer_, LV_OBJ_FLAG_SCROLLABLE);
 
   splash_stars_ = make_label(splash_layer_, "— — —", &lv_font_montserrat_28, COL_MUTED);
   lv_obj_align(splash_stars_, LV_ALIGN_TOP_MID, 0, 70);
@@ -344,12 +368,10 @@ void AppUi::buildMessageOverlay() {
   // Top layer so parent messages appear over prize or jobs screens.
   msg_layer_ = lv_obj_create(lv_layer_top());
   strip_chrome(msg_layer_);
-  lv_obj_set_size(msg_layer_, LCD_H_RES, LCD_V_RES);
-  lv_obj_set_pos(msg_layer_, 0, 0);
+  harden_layer(msg_layer_);
   lv_obj_set_style_bg_color(msg_layer_, c(COL_BG), 0);
   lv_obj_set_style_bg_opa(msg_layer_, LV_OPA_80, 0);
   lv_obj_add_flag(msg_layer_, LV_OBJ_FLAG_HIDDEN);
-  lv_obj_clear_flag(msg_layer_, LV_OBJ_FLAG_SCROLLABLE);
 
   lv_obj_t *card = lv_obj_create(msg_layer_);
   lv_obj_set_size(card, 640, 260);
@@ -655,8 +677,10 @@ void AppUi::updateHomeRemainders() {
 }
 
 void AppUi::rebuildJobList() {
+  lock_screen_layout(screen_kid_);
   lv_obj_clean(job_list_);
   lv_obj_scroll_to_y(job_list_, 0, LV_ANIM_OFF);
+  harden_scroll_list(job_list_);
   for (size_t j = 0; j < JOB_COUNT; ++j) {
     done_btns_[j] = nullptr;
     job_rows_[j] = nullptr;
@@ -773,8 +797,10 @@ void AppUi::updateKidHeader() {
 }
 
 void AppUi::rebuildNotDoneList() {
+  lock_screen_layout(screen_not_done_);
   lv_obj_clean(not_done_list_);
   lv_obj_scroll_to_y(not_done_list_, 0, LV_ANIM_OFF);
+  harden_scroll_list(not_done_list_);
 
   size_t total_left = 0;
   for (size_t k = 0; k < KID_COUNT; ++k) {
@@ -1074,6 +1100,10 @@ void AppUi::showNotDone() {
 void AppUi::refreshActiveScreen() {
   switch (screen_kind_) {
     case ScreenKind::Idle:
+      lock_screen_layout(screen_idle_);
+      harden_layer(ad_layer_);
+      harden_layer(picker_layer_);
+      harden_layer(splash_layer_);
       if (idle_mode_ == IdleMode::Ads) {
         refreshPrizeAd();
       } else if (idle_mode_ == IdleMode::Picker) {
@@ -1081,10 +1111,12 @@ void AppUi::refreshActiveScreen() {
       }
       break;
     case ScreenKind::Home:
+      lock_screen_layout(screen_home_);
       updateHomeRemainders();
       updateLeftoverHomeButton();
       break;
     case ScreenKind::Kid:
+      lock_screen_layout(screen_kid_);
       updateKidHeader();
       for (size_t j = 0; j < JOB_COUNT; ++j) {
         updateJobRow(j);

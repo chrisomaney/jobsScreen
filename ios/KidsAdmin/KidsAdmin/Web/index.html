@@ -1,0 +1,770 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Jobs Chooser</title>
+<meta name="theme-color" content="#F6F1E9" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#16191F" media="(prefers-color-scheme: dark)">
+<link rel="preconnect" href="https://api.fontshare.com" crossorigin>
+<link href="https://api.fontshare.com/v2/css?f[]=chillax@500,600&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
+<style>
+  :root {
+    --bg: #F6F1E9;
+    --surface: #FFFDF9;
+    --surface-2: #EFE8DC;
+    --line: #E2D9CA;
+    --ink: #26241F;
+    --ink-2: #6B655A;
+    --ink-3: #9A9284;
+    --accent: #1F6F5C;
+    --accent-ink: #FFFFFF;
+    --accent-soft: #DCEEE7;
+    --danger: #A33A2B;
+    --danger-soft: #F6E1DC;
+    --expect: #3B6FD6;
+    --paid: #C98512;
+    --k0: #3B6FD6; --k0-soft: #E1E9FA;
+    --k1: #C2457A; --k1-soft: #F7E1EA;
+    --k2: #C98512; --k2-soft: #F7ECD7;
+    --k3: #2F8A55; --k3-soft: #DDF0E3;
+    --k4: #7C5CF0; --k4-soft: #E8E1FA;
+    --kid-n: 5;
+    --radius: 14px;
+    --radius-sm: 10px;
+    --shadow: 0 1px 2px rgba(38,36,31,.06), 0 6px 20px rgba(38,36,31,.06);
+    --font-display: 'Chillax', 'Nunito', system-ui, sans-serif;
+    --font-body: 'Nunito', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --text-xs: .75rem; --text-sm: .875rem; --text-base: 1rem; --text-lg: 1.125rem; --text-xl: 1.5rem;
+    --tog-ink: #FFFFFF;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16191F; --surface: #1F232B; --surface-2: #272C35; --line: #333A45;
+      --ink: #F2EEE6; --ink-2: #AEB4BE; --ink-3: #7D8592;
+      --accent: #4FBF9F; --accent-ink: #0E2A22; --accent-soft: #1F3A33;
+      --danger: #E07A68; --danger-soft: #3A2421;
+      --expect: #7EA2F0; --paid: #E8B25A;
+      --k0: #7EA2F0; --k0-soft: #253150;
+      --k1: #E98BB2; --k1-soft: #45273A;
+      --k2: #E8B25A; --k2-soft: #423320;
+      --k3: #6CC793; --k3-soft: #1F3D2C;
+      --k4: #A78BFA; --k4-soft: #2E2748;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 6px 20px rgba(0,0,0,.25);
+      --tog-ink: #16191F;
+      color-scheme: dark;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg); color: var(--ink);
+    font-family: var(--font-body); font-size: var(--text-base); line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+    padding-bottom: calc(96px + env(safe-area-inset-bottom));
+  }
+  button, input { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; border-radius: 8px; }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 0 16px; }
+
+  /* Header */
+  header { padding: 20px 0 8px; }
+  .top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  h1 { font-family: var(--font-display); font-weight: 600; font-size: var(--text-xl); margin: 0; letter-spacing: -.01em; }
+  .sub { color: var(--ink-2); font-size: var(--text-sm); margin: 4px 0 0; }
+  .pills { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+    font-size: var(--text-xs); font-weight: 700; padding: 5px 10px; border-radius: 999px;
+    background: var(--surface-2); color: var(--ink-2);
+  }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ink-3); }
+  .pill.ok { background: var(--accent-soft); color: var(--accent); }
+  .pill.ok .dot { background: var(--accent); }
+  .pill.bad { background: var(--danger-soft); color: var(--danger); }
+  .pill.bad .dot { background: var(--danger); }
+  .linkish { background: none; border: 0; padding: 0; color: var(--ink-2); font-size: var(--text-xs); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+
+  /* Cards */
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
+  .connect { padding: 18px; margin: 14px 0; }
+  .connect h2 { font-family: var(--font-display); font-weight: 600; font-size: var(--text-lg); margin: 0 0 4px; }
+  .connect p { margin: 0 0 14px; color: var(--ink-2); font-size: var(--text-sm); }
+  .field { display: grid; gap: 4px; margin-bottom: 10px; }
+  .field label { font-size: var(--text-xs); font-weight: 700; color: var(--ink-2); text-transform: uppercase; letter-spacing: .04em; }
+  .field input, .field select {
+    width: 100%; padding: 11px 12px; border-radius: var(--radius-sm);
+    border: 1px solid var(--line); background: var(--bg);
+  }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .check { display: flex; align-items: center; gap: 8px; font-size: var(--text-sm); color: var(--ink-2); margin: 4px 0 14px; }
+
+  /* Add expectation / job */
+  .addcard { padding: 14px 16px; margin: 14px 0 4px; }
+  .addcard h2 { font-family: var(--font-display); font-weight: 600; font-size: var(--text-lg); margin: 0 0 2px; }
+  .addcard .hint { margin: 0 0 12px; color: var(--ink-2); font-size: var(--text-sm); }
+  .seg {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px;
+    background: var(--bg); border: 1px solid var(--line); border-radius: 12px; margin-bottom: 10px;
+  }
+  .seg button {
+    border: 0; border-radius: 9px; padding: 10px 8px; font-weight: 800; font-size: var(--text-sm);
+    background: transparent; color: var(--ink-2);
+  }
+  .seg button[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: var(--shadow); }
+  .seg button.expect[aria-pressed="true"] { color: var(--expect); }
+  .seg button.paid[aria-pressed="true"] { color: var(--paid); }
+  .addcard .actions { margin-top: 4px; }
+  .addcard .slots { font-size: var(--text-xs); color: var(--ink-3); margin-left: auto; }
+  .job .del {
+    border: 0; background: transparent; color: var(--danger); font-size: 11px; font-weight: 800;
+    padding: 2px 6px; border-radius: 6px; margin-left: 4px;
+  }
+  .job .del:hover { background: var(--danger-soft); }
+  .actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .btn {
+    border: 0; border-radius: 12px; padding: 11px 18px; font-weight: 800;
+    background: var(--surface-2); color: var(--ink);
+    transition: transform .08s ease, background .15s ease;
+  }
+  .btn:active { transform: scale(.97); }
+  .btn.primary { background: var(--accent); color: var(--accent-ink); }
+  .btn.danger { background: var(--danger-soft); color: var(--danger); }
+  .btn[disabled] { opacity: .5; cursor: default; }
+  .note { font-size: var(--text-xs); color: var(--ink-3); margin-top: 10px; }
+  .warn { font-size: var(--text-sm); color: var(--danger); background: var(--danger-soft); padding: 10px 12px; border-radius: var(--radius-sm); margin: 0 0 12px; }
+  .hidden { display: none !important; }
+
+  /* Kid strip — column count follows --kid-n from JS */
+  .kids { display: grid; grid-template-columns: repeat(var(--kid-n), 1fr); gap: 8px; margin: 14px 0 6px; }
+  .kid {
+    padding: 10px 10px 9px; border-radius: var(--radius-sm); background: var(--surface);
+    border: 1px solid var(--line); border-top: 4px solid var(--kc); min-width: 0;
+  }
+  .kid .name { font-family: var(--font-display); font-weight: 600; font-size: var(--text-base); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .kid .meta { font-size: var(--text-xs); color: var(--ink-2); line-height: 1.35; }
+  .kid .net { font-weight: 800; }
+  .kid .net.on { color: var(--accent); }
+  .bar { height: 5px; border-radius: 3px; background: var(--surface-2); margin-top: 6px; overflow: hidden; }
+  .bar > i { display: block; height: 100%; background: var(--kc); width: 0; transition: width .3s ease; }
+
+  /* Matrix — scroll horizontally on narrow phones so Hazel isn’t clipped off-screen */
+  section.group { margin-top: 18px; }
+  .matrix-scroll {
+    overflow-x: auto; -webkit-overflow-scrolling: touch;
+    margin: 0 -16px; padding: 0 16px 4px;
+  }
+  .matrix-scroll .ghead,
+  .matrix-scroll .list { min-width: calc(160px + var(--kid-n) * 48px); }
+  .ghead {
+    display: grid; grid-template-columns: minmax(120px, 1fr) repeat(var(--kid-n), minmax(44px, 52px)); align-items: end; gap: 4px;
+    padding: 0 10px 6px; position: sticky; top: 0; z-index: 2; background: var(--bg);
+    padding-top: 8px;
+  }
+  .gtitle { font-family: var(--font-display); font-weight: 600; font-size: var(--text-lg); display: flex; align-items: center; gap: 8px; }
+  .gtitle::before { content: ""; width: 10px; height: 10px; border-radius: 3px; background: var(--gc); }
+  .colh { text-align: center; font-size: var(--text-xs); font-weight: 800; color: var(--kc); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .colh .full { display: inline; }
+  .colh .short { display: none; }
+  .list { border-radius: var(--radius); overflow: hidden; }
+  .job {
+    display: grid; grid-template-columns: minmax(120px, 1fr) repeat(var(--kid-n), minmax(44px, 52px)); align-items: center; gap: 4px;
+    padding: 10px; background: var(--surface); border-bottom: 1px solid var(--line);
+    border-left: 4px solid var(--gc);
+  }
+  .job:last-child { border-bottom: 0; }
+  .job.changed { background: color-mix(in srgb, var(--surface) 88%, var(--accent) 12%); }
+  .jl { min-width: 0; }
+  .jname { font-weight: 700; overflow-wrap: anywhere; display: flex; align-items: center; gap: 8px; }
+  .jicon { font-size: 1.35em; line-height: 1; flex: none; }
+  .jsub { display: flex; gap: 6px; align-items: center; margin-top: 4px; flex-wrap: wrap; }
+  .req {
+    border: 1px solid var(--line); background: transparent; border-radius: 999px;
+    font-size: 11px; font-weight: 800; padding: 3px 8px; color: var(--ink-3);
+    display: inline-flex; align-items: center; gap: 4px;
+  }
+  .req svg { width: 12px; height: 12px; flex: none; }
+  .req { white-space: nowrap; }
+  .req .short { display: none; }
+  .req[aria-pressed="true"] { background: var(--accent-soft); border-color: transparent; color: var(--accent); }
+  .nobody { font-size: 11px; font-weight: 800; color: var(--danger); }
+  .tog {
+    width: 44px; height: 44px; justify-self: center; border-radius: 12px;
+    border: 2px solid var(--line); background: transparent; display: grid; place-items: center;
+    transition: background .12s ease, border-color .12s ease, transform .08s ease;
+  }
+  .tog:active { transform: scale(.92); }
+  .tog svg { width: 22px; height: 22px; opacity: 0; transition: opacity .12s ease; }
+  .tog[aria-pressed="true"] { background: var(--kc); border-color: var(--kc); color: var(--tog-ink); }
+  .tog[aria-pressed="true"] svg { opacity: 1; }
+
+  /* Admin */
+  details.admin { margin-top: 22px; padding: 4px 16px; }
+  details.admin summary { padding: 12px 0; font-weight: 800; cursor: pointer; color: var(--ink-2); }
+  details.admin .actions { padding-bottom: 14px; }
+  details.admin p { margin: 0 0 12px; font-size: var(--text-sm); color: var(--ink-2); }
+
+  /* Save bar */
+  .savebar {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 10;
+    padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+    background: color-mix(in srgb, var(--surface) 92%, transparent);
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    border-top: 1px solid var(--line);
+    transform: translateY(110%); transition: transform .2s ease;
+  }
+  .savebar.show { transform: none; }
+  .savebar .wrap { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 0; }
+  .savebar .count { font-weight: 800; }
+  .savebar .actions { flex-wrap: nowrap; }
+  .savebar .count small { display: block; font-weight: 600; color: var(--ink-2); font-size: var(--text-xs); }
+
+  .toast {
+    position: fixed; left: 50%; bottom: calc(90px + env(safe-area-inset-bottom)); z-index: 20;
+    transform: translate(-50%, 20px); opacity: 0; pointer-events: none;
+    background: var(--ink); color: var(--bg); font-weight: 700; font-size: var(--text-sm);
+    padding: 10px 16px; border-radius: 999px; transition: opacity .2s ease, transform .2s ease;
+    max-width: calc(100% - 32px); text-align: center;
+  }
+  .toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+  .skeleton { padding: 30px 0; text-align: center; color: var(--ink-3); font-size: var(--text-sm); }
+
+  @media (max-width: 520px) {
+    .colh .full { display: none; }
+    .colh .short { display: inline; }
+    .kids { grid-template-columns: repeat(var(--kid-n), minmax(64px, 1fr)); overflow-x: auto; }
+  }
+  @media (max-width: 420px) {
+    h1 { font-size: 1.3rem; white-space: nowrap; }
+    .top { align-items: flex-start; }
+    .pills { flex-direction: column; align-items: flex-end; }
+    .req .long { display: none; }
+    .req .short { display: inline; }
+    .ghead, .job { grid-template-columns: minmax(100px, 1fr) repeat(var(--kid-n), minmax(40px, 44px)); gap: 2px; }
+    .tog { width: 40px; height: 40px; }
+    .kids { gap: 6px; }
+    .kid { padding: 8px 7px; }
+    .row2 { grid-template-columns: 1fr; gap: 0; }
+    .savebar .btn { padding: 10px 14px; }
+    .savebar .count small { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="top">
+      <div>
+        <h1>Who does what</h1>
+        <p class="sub">Choose each kid's jobs on the panel</p>
+      </div>
+      <div class="pills">
+        <span class="pill" id="connPill"><span class="dot"></span><span id="connText">Not connected</span></span>
+        <span class="pill hidden" id="panelPill"><span class="dot"></span><span id="panelText">Panel</span></span>
+      </div>
+    </div>
+  </header>
+
+  <form class="card connect" id="connectCard" autocomplete="on">
+    <h2>Connect to your MQTT broker</h2>
+    <p>Same broker the panel uses, over WebSockets (Mosquitto add-on: port 1884, or 8884 with SSL).</p>
+    <div class="warn hidden" id="mixedWarn">This page is on https, so the browser only allows <b>wss://</b> broker addresses.</div>
+    <div class="field">
+      <label for="url">Broker address</label>
+      <input id="url" name="url" inputmode="url" spellcheck="false" placeholder="ws://homeassistant.local:1884">
+    </div>
+    <div class="row2">
+      <div class="field"><label for="user">Username</label><input id="user" name="username" autocomplete="username" spellcheck="false"></div>
+      <div class="field"><label for="pass">Password</label><input id="pass" name="password" type="password" autocomplete="current-password"></div>
+    </div>
+    <label class="check"><input type="checkbox" id="remember" checked> Remember on this device</label>
+    <div class="actions">
+      <button class="btn primary" type="submit" id="connectBtn">Connect</button>
+      <button class="btn" type="button" id="demoBtn">Try demo</button>
+    </div>
+    <div class="note" id="connectNote"></div>
+  </form>
+
+  <div id="app" class="hidden">
+    <div class="kids" id="kids"></div>
+
+    <form class="card addcard" id="addForm">
+      <h2>Add expectation or job</h2>
+      <p class="hint">Creates a new item on the panel. Tick who does it after it appears.</p>
+      <div class="seg" role="group" aria-label="Type">
+        <button type="button" class="expect" id="addCatExpect" aria-pressed="true">Expectation</button>
+        <button type="button" class="paid" id="addCatPaid" aria-pressed="false">Paid job</button>
+      </div>
+      <div class="field">
+        <label for="addLabel">Name</label>
+        <input id="addLabel" name="label" maxlength="40" placeholder="e.g. pack lunch" required autocomplete="off">
+      </div>
+      <div class="field">
+        <label for="addDetail">Hint <span style="font-weight:600;text-transform:none;letter-spacing:0">(optional)</span></label>
+        <input id="addDetail" name="detail" maxlength="80" placeholder="Short tip shown on the panel" autocomplete="off">
+      </div>
+      <label class="check"><input type="checkbox" id="addRequired" checked> Needed for internet unlock</label>
+      <div class="actions">
+        <button class="btn primary" type="submit" id="addBtn">Add to panel</button>
+        <span class="slots" id="addSlots"></span>
+      </div>
+    </form>
+
+    <div id="groups"><div class="skeleton" id="waiting">Waiting for the panel to send its job list...</div></div>
+
+    <details class="card admin">
+      <summary>Panel actions</summary>
+      <p>Resets apply straight away on the panel.</p>
+      <div class="actions">
+        <button class="btn danger" type="button" id="resetAll">Clear today's ticks</button>
+        <button class="btn danger" type="button" id="resetRewards">Zero reward tallies</button>
+        <button class="btn" type="button" id="disconnect">Disconnect</button>
+      </div>
+    </details>
+  </div>
+</div>
+
+<div class="savebar" id="savebar" role="region" aria-label="Unsaved changes">
+  <div class="wrap">
+    <div class="count" id="changeCount">0 changes<small>Not sent to the panel yet</small></div>
+    <div class="actions">
+      <button class="btn" type="button" id="discard">Discard</button>
+      <button class="btn primary" type="button" id="save">Save to panel</button>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(() => {
+  const TOPIC_STATE = 'kids/config/state';
+  const TOPIC_SET = 'kids/config/set';
+  const TOPIC_STATUS = 'kids/panel/status';
+  const STORE_KEY = 'jobsChooser.conn';
+
+  const ICON_CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+  const ICON_WIFI = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M2 8.8a15 15 0 0 1 20 0M5.5 12.4a10 10 0 0 1 13 0M9 16a5 5 0 0 1 6 0"/><circle cx="12" cy="19.5" r="1.2" fill="currentColor"/></svg>';
+
+  // Same pictures as the panel — helps when parents are assigning jobs with Jax
+  const JOB_EMOJI = {
+    make_bed: '🛏️', tidy_floor: '🧹', washing_in_baskets: '🧺', towels_on_hooks: '🧼',
+    brush_teeth: '🪥', get_dressed: '👕', socks_on: '🧦', medication: '💊',
+    loungeroom_tidy: '🛋️', table_cleared: '🍽️', lights_fans_off: '💡',
+    feed_cat: '🐱', feed_dog: '🐶', dishes_away: '🍽️', dishes_wash: '🫧',
+    water_plants: '🌱', bins_out: '🗑️', bathroom: '🛁',
+  };
+
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  let client = null;
+  let demo = false;
+  let base = null;          // last config from the panel
+  let draft = {};           // id -> { kids: Set, required: bool }
+  let progress = {};        // slug -> progress JSON
+  let saving = null;        // { timer }
+  let addCat = 'expectation';
+  let adding = false;
+
+  // ---------- connection form ----------
+  const saved = (() => { try { return JSON.parse(localStorage.getItem(STORE_KEY) || 'null'); } catch { return null; } })();
+  const defaultUrl = () => {
+    const host = location.hostname || 'homeassistant.local';
+    return location.protocol === 'https:' ? `wss://${host}:8884` : `ws://${host}:1884`;
+  };
+  $('url').value = saved?.url || defaultUrl();
+  $('user').value = saved?.user || '';
+  $('pass').value = saved?.pass || '';
+  if (location.protocol === 'https:') $('mixedWarn').classList.remove('hidden');
+
+  function setConn(kind, text) {
+    const p = $('connPill');
+    p.classList.toggle('ok', kind === 'ok');
+    p.classList.toggle('bad', kind === 'bad');
+    $('connText').textContent = text;
+  }
+  function setPanel(online) {
+    const p = $('panelPill');
+    p.classList.remove('hidden');
+    p.classList.toggle('ok', online);
+    p.classList.toggle('bad', !online);
+    $('panelText').textContent = online ? 'Panel online' : 'Panel offline';
+  }
+
+  $('connectCard').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const url = $('url').value.trim();
+    if (!/^wss?:\/\//.test(url)) { $('connectNote').textContent = 'Address must start with ws:// or wss://'; return; }
+    if (location.protocol === 'https:' && url.startsWith('ws://')) {
+      $('connectNote').textContent = 'Use a wss:// address on an https page, or open this page over http.'; return;
+    }
+    if ($('remember').checked) localStorage.setItem(STORE_KEY, JSON.stringify({ url, user: $('user').value, pass: $('pass').value }));
+    else localStorage.removeItem(STORE_KEY);
+    connect(url, $('user').value, $('pass').value);
+  });
+  $('demoBtn').addEventListener('click', startDemo);
+  $('disconnect').addEventListener('click', () => {
+    if (client) { client.end(true); client = null; }
+    demo = false; base = null; draft = {};
+    $('app').classList.add('hidden'); $('connectCard').classList.remove('hidden');
+    $('panelPill').classList.add('hidden');
+    setConn('', 'Not connected'); updateSaveBar();
+  });
+
+  function connect(url, username, password) {
+    if (typeof mqtt === 'undefined') { $('connectNote').textContent = 'Could not load the MQTT library (needs internet once).'; return; }
+    if (client) client.end(true);
+    $('connectBtn').disabled = true;
+    $('connectNote').textContent = 'Connecting...';
+    setConn('', 'Connecting...');
+    client = mqtt.connect(url, {
+      username: username || undefined, password: password || undefined,
+      clientId: 'jobs-web-' + Math.random().toString(16).slice(2, 8),
+      reconnectPeriod: 3000, connectTimeout: 8000, clean: true,
+    });
+    client.on('connect', () => {
+      $('connectBtn').disabled = false; $('connectNote').textContent = '';
+      setConn('ok', 'Connected');
+      $('connectCard').classList.add('hidden'); $('app').classList.remove('hidden');
+      client.subscribe([TOPIC_STATE, TOPIC_STATUS, 'kids/+/progress']);
+    });
+    client.on('reconnect', () => setConn('', 'Reconnecting...'));
+    client.on('offline', () => setConn('bad', 'Offline'));
+    client.on('error', (err) => {
+      $('connectBtn').disabled = false;
+      const msg = /auth|Not authorized|Bad user/i.test(err.message) ? 'Wrong username or password.' : err.message;
+      $('connectNote').textContent = msg; setConn('bad', 'Error');
+    });
+    client.on('close', () => { $('connectBtn').disabled = false; });
+    client.on('message', (topic, payload) => {
+      const text = payload.toString();
+      if (topic === TOPIC_STATUS) return setPanel(text === 'online');
+      if (topic === TOPIC_STATE) { try { onConfig(JSON.parse(text)); } catch (e) { console.warn('bad config', e); } return; }
+      const m = topic.match(/^kids\/([^/]+)\/progress$/);
+      if (m) { try { progress[m[1]] = JSON.parse(text); renderKids(); } catch {} }
+    });
+  }
+
+  function publish(topic, payload) {
+    if (demo) return demoHandle(topic, payload);
+    if (!client || !client.connected) { toast('Not connected to the broker'); return false; }
+    client.publish(topic, payload, { qos: 1, retain: false });
+    return true;
+  }
+
+  // ---------- config model ----------
+  function cloneDraft(cfg) {
+    const d = {};
+    for (const j of cfg.jobs) d[j.id] = { kids: new Set(j.kids), required: !!j.required };
+    return d;
+  }
+  function changedIds() {
+    if (!base) return [];
+    return base.jobs.filter((j) => {
+      const d = draft[j.id]; if (!d) return false;
+      if (d.required !== !!j.required) return true;
+      if (d.kids.size !== j.kids.length) return true;
+      return j.kids.some((k) => !d.kids.has(k));
+    }).map((j) => j.id);
+  }
+
+  function onConfig(cfg) {
+    if (!cfg || !Array.isArray(cfg.jobs) || !Array.isArray(cfg.kids)) return;
+    // Keep a stable kid order / ensure all known kids appear (Hazel was easy to clip off-screen).
+    const known = [
+      ['xavier', 'Xavier'], ['presley', 'Presley'], ['jax', 'Jax'], ['banx', 'Banx'], ['hazel', 'Hazel'],
+    ];
+    const bySlug = Object.fromEntries(cfg.kids.map((k) => [k.slug, k]));
+    cfg = {
+      ...cfg,
+      kids: known.map(([slug, name]) => bySlug[slug] || { slug, name }).concat(
+        cfg.kids.filter((k) => !known.some(([s]) => s === k.slug))
+      ),
+    };
+    const dirty = base && changedIds().length > 0;
+    const prevIds = base ? new Set(base.jobs.map((j) => j.id)) : null;
+    base = cfg;
+    if (!dirty || saving) draft = cloneDraft(cfg);
+    else for (const j of cfg.jobs) if (!draft[j.id]) draft[j.id] = { kids: new Set(j.kids), required: !!j.required };
+    if (saving) {
+      clearTimeout(saving.timer); saving = null;
+      toast('Saved - the panel is updated');
+    }
+    if (adding) {
+      const kind = adding.kind;
+      clearTimeout(adding.timer);
+      adding = null;
+      if (kind === 'remove') {
+        toast('Removed from the panel');
+      } else {
+        const created = prevIds ? cfg.jobs.find((j) => !prevIds.has(j.id)) : null;
+        toast(created ? `Added “${created.label}”` : 'Added on the panel');
+        $('addLabel').value = '';
+        $('addDetail').value = '';
+        $('addRequired').checked = true;
+      }
+    }
+    render();
+  }
+
+  function setAddCat(cat) {
+    addCat = cat === 'paid' ? 'paid' : 'expectation';
+    $('addCatExpect').setAttribute('aria-pressed', addCat === 'expectation' ? 'true' : 'false');
+    $('addCatPaid').setAttribute('aria-pressed', addCat === 'paid' ? 'true' : 'false');
+  }
+  $('addCatExpect').addEventListener('click', () => setAddCat('expectation'));
+  $('addCatPaid').addEventListener('click', () => setAddCat('paid'));
+
+  function updateAddForm() {
+    const free = typeof base?.customSlotsFree === 'number' ? base.customSlotsFree : null;
+    $('addSlots').textContent = free == null ? '' : free === 0 ? 'No free slots left' : `${free} slot${free === 1 ? '' : 's'} free`;
+    $('addBtn').disabled = !!adding || !base || free === 0;
+    $('addLabel').disabled = !!adding || !base || free === 0;
+    $('addDetail').disabled = !!adding || !base || free === 0;
+  }
+
+  $('addForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    if (!base || adding || saving) return;
+    const label = $('addLabel').value.trim();
+    if (!label) { toast('Enter a name'); return; }
+    if (typeof base.customSlotsFree === 'number' && base.customSlotsFree <= 0) {
+      toast('No free slots — remove a custom item first');
+      return;
+    }
+    const payload = {
+      add: {
+        label,
+        cat: addCat,
+        required: $('addRequired').checked,
+        kids: base.kids.map((k) => k.slug),
+      },
+    };
+    const detail = $('addDetail').value.trim();
+    if (detail) payload.add.detail = detail;
+    if (!publish(TOPIC_SET, JSON.stringify(payload))) return;
+    adding = { kind: 'add', timer: setTimeout(() => {
+      adding = null; updateAddForm();
+      toast("The panel didn't confirm. Is it online?");
+    }, 8000) };
+    updateAddForm();
+  });
+
+  // ---------- render ----------
+  function kidVars(i) { return `--kc: var(--k${i % 5}); --kcs: var(--k${i % 5}-soft);`; }
+  function setKidCount(n) { document.documentElement.style.setProperty('--kid-n', String(Math.max(1, n))); }
+
+  function renderKids() {
+    if (!base) { $('kids').innerHTML = ''; return; }
+    setKidCount(base.kids.length);
+    $('kids').innerHTML = base.kids.map((k, i) => {
+      const count = base.jobs.filter((j) => draft[j.id]?.kids.has(k.slug)).length;
+      const p = progress[k.slug];
+      const pct = p && typeof p.pct === 'number' ? p.pct : null;
+      const net = p ? (p.internet ? '<span class="net on">Internet on</span>' : '<span class="net">Internet off</span>') : '';
+      return `<div class="kid" style="${kidVars(i)}">
+        <div class="name">${esc(k.name)}</div>
+        <div class="meta">${count} job${count === 1 ? '' : 's'}${net ? '<br>' + net : ''}</div>
+        <div class="bar" title="Today's required jobs done"><i style="width:${pct ?? 0}%"></i></div>
+      </div>`;
+    }).join('');
+  }
+
+  function renderGroups() {
+    if (!base) return;
+    setKidCount(base.kids.length);
+    const changed = new Set(changedIds());
+    const groups = [
+      { cat: 'expectation', title: 'Expectations', color: 'var(--expect)' },
+      { cat: 'paid', title: 'Paid jobs', color: 'var(--paid)' },
+    ];
+    $('groups').innerHTML = groups.map((g) => {
+      const jobs = base.jobs.filter((j) => j.cat === g.cat);
+      if (!jobs.length) return '';
+      const heads = base.kids.map((k, i) => {
+        const short = esc((k.name || k.slug).slice(0, 3));
+        return `<div class="colh" style="${kidVars(i)}" title="${esc(k.name)}"><span class="full">${esc(k.name)}</span><span class="short">${short}</span></div>`;
+      }).join('');
+      const rows = jobs.map((j) => {
+        const d = draft[j.id];
+        const togs = base.kids.map((k, i) => {
+          const on = d.kids.has(k.slug);
+          return `<button type="button" class="tog" style="${kidVars(i)}" data-job="${esc(j.id)}" data-kid="${esc(k.slug)}"
+            aria-pressed="${on}" aria-label="${esc(k.name)} does ${esc(j.label)}">${ICON_CHECK}</button>`;
+        }).join('');
+        const nobody = d.kids.size === 0 ? '<span class="nobody">Nobody - hidden on panel</span>' : '';
+        const del = j.custom
+          ? `<button type="button" class="del" data-del="${esc(j.id)}" title="Remove from panel">Remove</button>`
+          : '';
+        return `<div class="job${changed.has(j.id) ? ' changed' : ''}">
+          <div class="jl">
+            <div class="jname"><span class="jicon" aria-hidden="true">${JOB_EMOJI[j.id] || (j.custom ? '📝' : '✅')}</span> ${esc(j.label)}</div>
+            <div class="jsub">
+              <button type="button" class="req" data-req="${esc(j.id)}" aria-pressed="${d.required}"
+                title="Must be done before internet unlocks">${ICON_WIFI}${d.required
+                ? '<span class="long">Needed for internet</span><span class="short">Needed</span>'
+                : 'Optional'}</button>
+              ${nobody}${del}
+            </div>
+          </div>${togs}
+        </div>`;
+      }).join('');
+      return `<section class="group" style="--gc:${g.color}">
+        <div class="matrix-scroll">
+          <div class="ghead"><div class="gtitle">${g.title}</div>${heads}</div>
+          <div class="list card">${rows}</div>
+        </div>
+      </section>`;
+    }).join('');
+  }
+
+  function updateSaveBar() {
+    const n = changedIds().length;
+    $('savebar').classList.toggle('show', n > 0 || !!saving);
+    $('changeCount').innerHTML = saving ? 'Saving...<small>Waiting for the panel to confirm</small>'
+      : `${n} change${n === 1 ? '' : 's'}<small>Not sent to the panel yet</small>`;
+    $('save').disabled = !!saving || n === 0;
+    $('discard').disabled = !!saving;
+  }
+
+  function render() { renderKids(); renderGroups(); updateSaveBar(); updateAddForm(); }
+
+  $('groups').addEventListener('click', (e) => {
+    if (!base || saving || adding) return;
+    const t = e.target.closest('.tog');
+    if (t) {
+      const set = draft[t.dataset.job].kids;
+      set.has(t.dataset.kid) ? set.delete(t.dataset.kid) : set.add(t.dataset.kid);
+      return render();
+    }
+    const r = e.target.closest('.req');
+    if (r) { draft[r.dataset.req].required = !draft[r.dataset.req].required; render(); return; }
+    const del = e.target.closest('.del');
+    if (del) {
+      const id = del.dataset.del;
+      const job = base.jobs.find((j) => j.id === id);
+      if (!job?.custom) return;
+      if (!confirm(`Remove “${job.label}” from the panel?`)) return;
+      if (!publish(TOPIC_SET, JSON.stringify({ remove: [id] }))) return;
+      adding = { kind: 'remove', timer: setTimeout(() => {
+        adding = null; updateAddForm();
+        toast("The panel didn't confirm. Is it online?");
+      }, 8000) };
+      updateAddForm();
+    }
+  });
+
+  $('discard').addEventListener('click', () => { if (base) { draft = cloneDraft(base); render(); } });
+
+  $('save').addEventListener('click', () => {
+    const ids = changedIds();
+    if (!ids.length) return;
+    const jobs = {};
+    for (const id of ids) jobs[id] = { kids: [...draft[id].kids], required: draft[id].required };
+    if (!publish(TOPIC_SET, JSON.stringify({ jobs }))) return;
+    saving = { timer: setTimeout(() => {
+      saving = null; updateSaveBar();
+      toast("The panel didn't confirm. Is it online?");
+    }, 8000) };
+    updateSaveBar();
+  });
+
+  $('resetAll').addEventListener('click', () => {
+    if (confirm("Clear everyone's ticks for today? Reward tallies are kept.")) {
+      if (publish('kids/cmd/reset_all', 'reset')) toast("Today's ticks cleared");
+    }
+  });
+  $('resetRewards').addEventListener('click', () => {
+    if (confirm('Set every reward tally back to 0?')) {
+      if (publish('kids/cmd/reset_rewards', 'reset')) toast('Reward tallies zeroed');
+    }
+  });
+
+  let toastTimer;
+  function toast(msg) {
+    const t = $('toast'); t.textContent = msg; t.classList.add('show');
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 2600);
+  }
+
+  // ---------- demo mode (no broker) ----------
+  const DEMO_KIDS = [['xavier', 'Xavier'], ['presley', 'Presley'], ['jax', 'Jax'], ['banx', 'Banx'], ['hazel', 'Hazel']];
+  const DEMO_JOBS = [
+    ['make_bed', 'make bed', 'expectation'], ['tidy_floor', 'tidy floor', 'expectation'],
+    ['washing_in_baskets', 'washing in baskets', 'expectation'], ['towels_on_hooks', 'towels on hooks', 'expectation'],
+    ['brush_teeth', 'brush teeth', 'expectation'], ['get_dressed', 'get dressed', 'expectation'],
+    ['socks_on', 'socks on', 'expectation'], ['medication', 'medication', 'expectation'],
+    ['loungeroom_tidy', 'loungeroom tidy', 'expectation'], ['table_cleared', 'table cleared', 'expectation'],
+    ['lights_fans_off', 'lights and fans off', 'expectation'],
+    ['feed_cat', 'feed cat', 'paid'], ['feed_dog', 'feed dog', 'paid'], ['dishes_away', 'dishes away', 'paid'],
+    ['dishes_wash', 'dishes wash', 'paid'], ['water_plants', 'water plants', 'paid'],
+    ['bins_out', 'bins out', 'paid'], ['bathroom', 'bathroom', 'paid'],
+  ];
+  let demoCfg = null;
+  function demoSlotsFree() {
+    const used = demoCfg.jobs.filter((j) => j.custom).length;
+    return Math.max(0, 8 - used);
+  }
+  function startDemo() {
+    demo = true;
+    demoCfg = {
+      v: 1,
+      customSlotsFree: 8,
+      kids: DEMO_KIDS.map(([slug, name]) => ({ slug, name })),
+      jobs: DEMO_JOBS.map(([id, label, cat]) => ({
+        id, label, cat, required: true, custom: false, kids: DEMO_KIDS.map((k) => k[0]),
+      })),
+    };
+    progress = {
+      xavier: { pct: 72, internet: false }, presley: { pct: 100, internet: true },
+      jax: { pct: 39, internet: false }, banx: { pct: 11, internet: false },
+      hazel: { pct: 55, internet: false },
+    };
+    $('connectCard').classList.add('hidden'); $('app').classList.remove('hidden');
+    setConn('ok', 'Demo mode'); setPanel(true);
+    setTimeout(() => onConfig(structuredClone(demoCfg)), 350);
+  }
+  function demoHandle(topic, payload) {
+    if (topic === TOPIC_SET) {
+      const msg = JSON.parse(payload);
+      if (msg.jobs) {
+        for (const j of demoCfg.jobs) {
+          if (msg.jobs[j.id]) { j.kids = msg.jobs[j.id].kids; j.required = msg.jobs[j.id].required; }
+        }
+      }
+      if (msg.add && msg.add.label && demoSlotsFree() > 0) {
+        let n = 0;
+        while (demoCfg.jobs.some((j) => j.id === `custom_${n}`)) n += 1;
+        demoCfg.jobs.push({
+          id: `custom_${n}`,
+          label: String(msg.add.label).trim(),
+          cat: msg.add.cat === 'paid' ? 'paid' : 'expectation',
+          required: msg.add.required !== false,
+          custom: true,
+          detail: msg.add.detail || undefined,
+          kids: Array.isArray(msg.add.kids) ? msg.add.kids : DEMO_KIDS.map((k) => k[0]),
+        });
+      }
+      const remove = Array.isArray(msg.remove) ? msg.remove : (msg.remove ? [msg.remove] : []);
+      if (remove.length) {
+        demoCfg.jobs = demoCfg.jobs.filter((j) => !(j.custom && remove.includes(j.id)));
+      }
+      demoCfg.customSlotsFree = demoSlotsFree();
+      setTimeout(() => onConfig(structuredClone(demoCfg)), 500);
+    }
+    return true;
+  }
+
+  if (new URLSearchParams(location.search).has('demo')) startDemo();
+  else if (saved?.url && saved.autoconnect !== false) connect(saved.url, saved.user, saved.pass);
+})();
+</script>
+</body>
+</html>

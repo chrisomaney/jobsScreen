@@ -45,6 +45,14 @@
 	</array>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Kids Admin talks to your home Mosquitto broker on the local network to control internet and rewards.</string>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Kids Admin uses Bluetooth to set jobs on the panel when Wi‑Fi MQTT is unavailable.</string>
+	<key>NSBluetoothPeripheralUsageDescription</key>
+	<string>Kids Admin uses Bluetooth to set jobs on the panel when Wi‑Fi MQTT is unavailable.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>bluetooth-central</string>
+	</array>
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_mqtt._tcp</string>

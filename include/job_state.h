@@ -52,8 +52,29 @@ public:
   enum class InternetOverride : uint8_t { Auto = 0, On = 1, Off = 2 };
   InternetOverride internetOverride(size_t kid) const;
   void setInternetOverride(size_t kid, InternetOverride mode);
-  // Effective on/off published to kids/{slug}/internet (override wins over jobs).
+  // Effective on/off published to kids/{slug}/internet.
+  // Priority: Force Off → scheduled off (unless Force On) → Force On → jobs Auto.
   bool internetEffective(size_t kid) const;
+  bool internetScheduledOff(size_t kid) const;
+
+  // Bedtime-style windows: off_time → on_time for selected kids/days.
+  struct NetSchedule {
+    char id[20]{};
+    char label[40]{};
+    uint8_t kids_mask = 0xFF;
+    uint8_t days = 0x7F;  // bit0=Sun … bit6=Sat
+    uint8_t off_hour = 20;
+    uint8_t off_minute = 0;
+    uint8_t on_hour = 7;
+    uint8_t on_minute = 0;
+    bool enabled = true;
+  };
+  size_t netScheduleCount() const { return net_schedule_count_; }
+  const NetSchedule &netSchedule(size_t i) const { return net_schedules_[i]; }
+  bool applyInternetSchedulesJson(const char *json);
+  String internetSchedulesJson() const;
+  // Call from loop; returns kid bitmask whose effective internet may have changed.
+  uint8_t tickInternetSchedules();
 
   uint32_t rewardTally(size_t kid) const;
   void addReward(size_t doer);
@@ -94,12 +115,19 @@ private:
   bool done_[KID_COUNT][JOB_COUNT]{};
   uint32_t rewards_[KID_COUNT]{};
   InternetOverride internet_override_[KID_COUNT]{};
+  NetSchedule net_schedules_[INTERNET_SCHEDULE_MAX]{};
+  size_t net_schedule_count_ = 0;
+  bool scheduled_off_cache_[KID_COUNT]{};
   uint32_t job_day_ = 0;
   Preferences prefs_;
   Preferences prize_prefs_;
   Preferences net_prefs_;
+  Preferences net_sched_prefs_;
   void loadInternetOverrides();
   void persistInternetOverride(size_t kid);
+  void loadInternetSchedules();
+  void saveInternetSchedules();
+  bool scheduleActiveNow(const NetSchedule &s, int hour, int minute, int wday) const;
   PrizeDef prizes_[PRIZE_MAX]{};
   size_t prize_count_ = 0;
   Splash splash_{};
