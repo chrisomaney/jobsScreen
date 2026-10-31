@@ -4,6 +4,7 @@
 #include <esp_system.h>
 
 #include "app_secrets.h"
+#include "ble_bridge.h"
 #include "clock_util.h"
 #include "config.h"
 #include "display_board.h"
@@ -17,6 +18,7 @@ namespace {
 JobState g_state;
 RewardEngine g_rewards;
 MqttBridge g_mqtt;
+BleBridge g_ble;
 AppUi g_ui;
 
 const char *resetReasonText(esp_reset_reason_t r) {
@@ -105,6 +107,8 @@ void setup() {
   g_ui.begin(&g_state, &g_mqtt, &g_rewards);
 
   startWifi();
+  // BLE after Wi-Fi mode is set — better coexistence on ESP32-S3.
+  g_ble.begin(&g_state, &g_mqtt);
   clock_begin_ntp();  // SNTP keeps retrying until Wi-Fi is up
 }
 
@@ -121,6 +125,7 @@ void loop() {
     }
   }
   g_mqtt.loop();
+  g_ble.loop();
   g_ui.tick();
   display_board_loop();
   delay(5);

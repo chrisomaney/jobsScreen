@@ -12,10 +12,17 @@ final class AdminStore: ObservableObject {
     @Published var customSlotsFree: Int? = nil
     @Published var commonInternetOn = false
     @Published var lastError: String?
+    @Published var bleReady = false
+
+    let ble = BlePanelClient()
 
     private var settings: SettingsStore?
     private let mqtt = MqttClient()
     private var rules: [[String: Any]] = []
+    private var connectDebounce: Task<Void, Never>?
+    private var bleWatchStarted = false
+    /// MQTT or BLE is usable for saving jobs.
+    var canSaveJobs: Bool { connected || bleReady }
 
     init() {
         for kid in AdminKid.all {
@@ -41,7 +48,7 @@ final class AdminStore: ObservableObject {
                     self.lastError = nil
                 case .failed(let msg):
                     self.connected = false
-                    self.connectionLabel = "Error"
+                    self.connectionLabel = "Reconnecting…"
                     self.lastError = msg
                 }
             }
@@ -51,28 +58,74 @@ final class AdminStore: ObservableObject {
                 self?.handle(topic: topic, data: data)
             }
         }
+        ble.onConfigState = { [weak self] data in
+            Task { @MainActor in
+                self?.parseConfig(data)
+            }
+        }
+        ble.onAck = { [weak self] ok, message in
+            Task { @MainActor in
+                if !ok {
+                    self?.lastError = message.isEmpty ? "BLE save failed" : message
+                } else {
+                    self?.lastError = nil
+                }
+            }
+        }
     }
 
     func connect() {
         guard let settings else { return }
-        mqtt.connect(urlString: settings.broker, username: settings.username, password: settings.password)
-        var topics = [
-            "kids/config/state",
-            "kids/rewards/rules/state",
-            "kids/rewards/catalog",
-            "kids/common/internet",
-        ]
-        for kid in AdminKid.all {
-            topics.append("kids/\(kid.slug)/progress")
-            topics.append("kids/\(kid.slug)/rewards/tally")
-            topics.append("kids/\(kid.slug)/internet")
+        // Debounce rapid Connect taps so we don't stack WebSocket sessions (UI freeze).
+        connectDebounce?.cancel()
+        connectDebounce = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 150_000_000)
+            guard !Task.isCancelled else { return }
+            self.mqtt.connect(
+                urlString: settings.broker,
+                username: settings.username,
+                password: settings.password
+            )
+            var topics = [
+                "kids/config/state",
+                "kids/rewards/rules/state",
+                "kids/rewards/catalog",
+                "kids/common/internet",
+            ]
+            for kid in AdminKid.all {
+                topics.append("kids/\(kid.slug)/progress")
+                topics.append("kids/\(kid.slug)/rewards/tally")
+                topics.append("kids/\(kid.slug)/internet")
+            }
+            self.mqtt.subscribe(topics)
         }
-        mqtt.subscribe(topics)
     }
 
     func disconnect() {
+        connectDebounce?.cancel()
         mqtt.disconnect()
     }
+
+    func startBle() {
+        if !bleWatchStarted {
+            bleWatchStarted = true
+            ble.$phase
+                .receive(on: RunLoop.main)
+                .sink { [weak self] phase in
+                    self?.bleReady = (phase == .ready)
+                    self?.objectWillChange.send()
+                }
+                .store(in: &bleBag)
+        }
+        ble.startScan()
+    }
+
+    func stopBle() {
+        ble.stop()
+        bleReady = false
+    }
+
+    private var bleBag = Set<AnyCancellable>()
 
     // MARK: - Internet
 
@@ -124,9 +177,8 @@ final class AdminStore: ObservableObject {
             "kids": AdminKid.all.map(\.slug),
         ]
         if !detail.isEmpty { add["detail"] = detail }
-        publishJSON("kids/config/set", ["add": add])
+        publishConfig(["add": add])
         if cat == "paid", let points {
-            // Points applied after config/state lists the new id (best-effort by label).
             pendingPaidPoints = (label, points)
         }
     }
@@ -139,15 +191,14 @@ final class AdminStore: ObservableObject {
             "required": job.required,
             "kids": job.kids,
         ]
-        publishJSON("kids/config/set", ["jobs": [job.id: fields]])
+        publishConfig(["jobs": [job.id: fields]])
     }
 
     func removeJob(id: String) {
-        publishJSON("kids/config/set", ["remove": [id]])
+        publishConfig(["remove": [id]])
     }
 
     func savePoints() {
-        // Force expectation items to 0.
         for j in jobs where j.cat != "paid" {
             jobPoints[j.id] = 0
         }
@@ -160,6 +211,19 @@ final class AdminStore: ObservableObject {
     }
 
     private var pendingPaidPoints: (String, Int)?
+
+    /// Prefer MQTT; fall back to BLE for job config so parents can still set jobs offline.
+    private func publishConfig(_ object: [String: Any]) {
+        if connected {
+            publishJSON("kids/config/set", object)
+            return
+        }
+        if ble.phase == .ready {
+            ble.sendConfigSet(object)
+            return
+        }
+        lastError = "Not connected — use Connect (MQTT) or Bluetooth"
+    }
 
     // MARK: - Incoming
 

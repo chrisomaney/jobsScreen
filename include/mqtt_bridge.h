@@ -23,6 +23,8 @@ public:
                                  uint32_t after);
   void publishAll();
   void publishConfig();
+  // Queue a full HA republish from outside the MQTT callback (e.g. BLE config).
+  void requestPublishAll() { pending_publish_all_ = true; }
   bool connected() { return client_.connected(); }
   void handleMessage(char *topic, byte *payload, unsigned int length);
 

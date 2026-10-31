@@ -1,7 +1,8 @@
 import Foundation
 
 /// Minimal MQTT 3.1.1 client over WebSockets (binary frames).
-/// Enough for Kids Admin: connect, subscribe, publish (incl. retain).
+/// Fixes flaky connect by waiting for the WebSocket to open before CONNECT,
+/// and auto-reconnects with backoff so the app doesn't sit frozen/offline.
 final class MqttClient: NSObject {
     enum State: Equatable {
         case disconnected
@@ -13,13 +14,21 @@ final class MqttClient: NSObject {
     var onState: ((State) -> Void)?
     var onMessage: ((String, Data) -> Void)?
 
+    private let work = DispatchQueue(label: "au.chrisomaney.KidsAdmin.mqtt", qos: .userInitiated)
     private var task: URLSessionWebSocketTask?
     private var session: URLSession?
     private var pingTimer: Timer?
     private var clientId: String
     private var username: String = ""
     private var password: String = ""
+    private var brokerURL: String = ""
     private var pendingSubs: [String] = []
+    private var wantsConnection = false
+    private var socketOpen = false
+    private var mqttReady = false
+    private var reconnectAttempt = 0
+    private var reconnectWorkItem: DispatchWorkItem?
+    private var rxBuffer = Data()
 
     init(clientId: String = "kids-admin-ios-\(Int.random(in: 1000...9999))") {
         self.clientId = clientId
@@ -27,48 +36,32 @@ final class MqttClient: NSObject {
     }
 
     func connect(urlString: String, username: String, password: String) {
-        disconnect()
-        self.username = username
-        self.password = password
-        onState?(.connecting)
-
-        var raw = urlString.trimmingCharacters(in: .whitespacesAndNewlines)
-        if raw.hasPrefix("http://") { raw = "ws://" + raw.dropFirst(7) }
-        if raw.hasPrefix("https://") { raw = "wss://" + raw.dropFirst(8) }
-        guard let url = URL(string: raw) else {
-            onState?(.failed("Bad broker URL"))
-            return
+        work.async { [weak self] in
+            guard let self else { return }
+            self.wantsConnection = true
+            self.reconnectAttempt = 0
+            self.open(urlString: urlString, username: username, password: password)
         }
-
-        let config = URLSessionConfiguration.default
-        config.waitsForConnectivity = true
-        let session = URLSession(configuration: config, delegate: self, delegateQueue: nil)
-        self.session = session
-        var request = URLRequest(url: url)
-        // Mosquitto websockets MQTT subprotocol
-        request.setValue("mqtt", forHTTPHeaderField: "Sec-WebSocket-Protocol")
-        let task = session.webSocketTask(with: request)
-        self.task = task
-        task.resume()
-        sendConnectPacket()
-        listen()
-        startPing()
     }
 
     func disconnect() {
-        pingTimer?.invalidate()
-        pingTimer = nil
-        task?.cancel(with: .goingAway, reason: nil)
-        task = nil
-        session?.invalidateAndCancel()
-        session = nil
-        onState?(.disconnected)
+        work.async { [weak self] in
+            guard let self else { return }
+            self.wantsConnection = false
+            self.reconnectWorkItem?.cancel()
+            self.reconnectWorkItem = nil
+            self.teardown(notify: true)
+        }
     }
 
     func subscribe(_ topics: [String]) {
-        pendingSubs = topics
-        guard task != nil else { return }
-        sendSubscribe(topics)
+        work.async { [weak self] in
+            guard let self else { return }
+            self.pendingSubs = topics
+            if self.mqttReady {
+                self.sendSubscribe(topics)
+            }
+        }
     }
 
     func publish(_ topic: String, payload: String, retain: Bool = false, qos: UInt8 = 0) {
@@ -76,21 +69,104 @@ final class MqttClient: NSObject {
     }
 
     func publish(_ topic: String, data: Data, retain: Bool = false, qos: UInt8 = 0) {
-        guard let task else { return }
-        var flags: UInt8 = 0x30 // PUBLISH
-        if retain { flags |= 0x01 }
-        if qos == 1 { flags |= 0x02 }
-        var body = Data()
-        body.append(mqttString(topic))
-        if qos > 0 {
-            body.append(contentsOf: [0x00, 0x01]) // packet id
-        }
-        body.append(data)
-        let packet = mqttPacket(flags, body)
-        task.send(.data(packet)) { [weak self] err in
-            if let err {
-                self?.onState?(.failed(err.localizedDescription))
+        work.async { [weak self] in
+            guard let self, self.mqttReady, let task = self.task else { return }
+            var flags: UInt8 = 0x30 // PUBLISH
+            if retain { flags |= 0x01 }
+            if qos == 1 { flags |= 0x02 }
+            var body = Data()
+            body.append(self.mqttString(topic))
+            if qos > 0 {
+                body.append(contentsOf: [0x00, 0x01]) // packet id
             }
+            body.append(data)
+            let packet = self.mqttPacket(flags, body)
+            task.send(.data(packet)) { [weak self] err in
+                if let err {
+                    self?.failAndMaybeReconnect(err.localizedDescription)
+                }
+            }
+        }
+    }
+
+    // MARK: - Connection lifecycle
+
+    private func open(urlString: String, username: String, password: String) {
+        teardown(notify: false)
+        self.username = username
+        self.password = password
+        self.brokerURL = urlString
+        socketOpen = false
+        mqttReady = false
+        rxBuffer.removeAll(keepingCapacity: true)
+        emit(.connecting)
+
+        var raw = urlString.trimmingCharacters(in: .whitespacesAndNewlines)
+        if raw.hasPrefix("http://") { raw = "ws://" + raw.dropFirst(7) }
+        if raw.hasPrefix("https://") { raw = "wss://" + raw.dropFirst(8) }
+        guard let url = URL(string: raw) else {
+            emit(.failed("Bad broker URL"))
+            return
+        }
+
+        let config = URLSessionConfiguration.default
+        config.waitsForConnectivity = true
+        config.timeoutIntervalForRequest = 30
+        config.timeoutIntervalForResource = 60
+        let session = URLSession(configuration: config, delegate: self, delegateQueue: nil)
+        self.session = session
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 30
+        // Mosquitto websockets MQTT subprotocol
+        request.setValue("mqtt", forHTTPHeaderField: "Sec-WebSocket-Protocol")
+        let task = session.webSocketTask(with: request)
+        self.task = task
+        task.resume()
+        listen()
+        // CONNECT is sent from didOpenWithProtocol — sending earlier causes flaky connects.
+    }
+
+    private func teardown(notify: Bool) {
+        DispatchQueue.main.async {
+            self.pingTimer?.invalidate()
+            self.pingTimer = nil
+        }
+        task?.cancel(with: .goingAway, reason: nil)
+        task = nil
+        session?.invalidateAndCancel()
+        session = nil
+        socketOpen = false
+        mqttReady = false
+        rxBuffer.removeAll()
+        if notify {
+            emit(.disconnected)
+        }
+    }
+
+    private func failAndMaybeReconnect(_ message: String) {
+        emit(.failed(message))
+        teardown(notify: false)
+        scheduleReconnect()
+    }
+
+    private func scheduleReconnect() {
+        guard wantsConnection else { return }
+        reconnectWorkItem?.cancel()
+        let attempt = reconnectAttempt
+        reconnectAttempt = min(reconnectAttempt + 1, 6)
+        let delay = min(30.0, pow(2.0, Double(attempt))) // 1,2,4,8,16,30…
+        let item = DispatchWorkItem { [weak self] in
+            guard let self, self.wantsConnection else { return }
+            self.open(urlString: self.brokerURL, username: self.username, password: self.password)
+        }
+        reconnectWorkItem = item
+        work.asyncAfter(deadline: .now() + delay, execute: item)
+        emit(.connecting)
+    }
+
+    private func emit(_ state: State) {
+        DispatchQueue.main.async { [weak self] in
+            self?.onState?(state)
         }
     }
 
@@ -107,7 +183,7 @@ final class MqttClient: NSObject {
             if !password.isEmpty { connectFlags |= 0x40 }
         }
         payload.append(connectFlags)
-        payload.append(contentsOf: [0x00, 0x3C]) // keep alive 60s
+        payload.append(contentsOf: [0x00, 0x2D]) // keep alive 45s
         payload.append(mqttString(clientId))
         if !username.isEmpty {
             payload.append(mqttString(username))
@@ -118,7 +194,7 @@ final class MqttClient: NSObject {
         let packet = mqttPacket(0x10, payload)
         task.send(.data(packet)) { [weak self] err in
             if let err {
-                self?.onState?(.failed(err.localizedDescription))
+                self?.failAndMaybeReconnect(err.localizedDescription)
             }
         }
     }
@@ -135,67 +211,89 @@ final class MqttClient: NSObject {
     }
 
     private func sendPing() {
-        task?.send(.data(Data([0xC0, 0x00]))) { _ in }
+        work.async { [weak self] in
+            guard let self, self.mqttReady else { return }
+            self.task?.send(.data(Data([0xC0, 0x00]))) { [weak self] err in
+                if let err {
+                    self?.failAndMaybeReconnect(err.localizedDescription)
+                }
+            }
+        }
     }
 
     private func startPing() {
-        DispatchQueue.main.async {
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
             self.pingTimer?.invalidate()
-            self.pingTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
+            let timer = Timer.scheduledTimer(withTimeInterval: 20, repeats: true) { [weak self] _ in
                 self?.sendPing()
             }
+            RunLoop.main.add(timer, forMode: .common)
+            self.pingTimer = timer
         }
     }
 
     private func listen() {
         task?.receive { [weak self] result in
             guard let self else { return }
-            switch result {
-            case .failure(let err):
-                self.onState?(.failed(err.localizedDescription))
-            case .success(let message):
-                switch message {
-                case .data(let data):
-                    self.handle(data)
-                case .string(let str):
-                    self.handle(Data(str.utf8))
-                @unknown default:
-                    break
+            self.work.async {
+                switch result {
+                case .failure(let err):
+                    if self.wantsConnection {
+                        self.failAndMaybeReconnect(err.localizedDescription)
+                    }
+                case .success(let message):
+                    switch message {
+                    case .data(let data):
+                        self.rxBuffer.append(data)
+                        self.drainBuffer()
+                    case .string(let str):
+                        self.rxBuffer.append(Data(str.utf8))
+                        self.drainBuffer()
+                    @unknown default:
+                        break
+                    }
+                    if self.wantsConnection, self.task != nil {
+                        self.listen()
+                    }
                 }
-                self.listen()
             }
         }
     }
 
-    private func handle(_ data: Data) {
-        var idx = 0
-        while idx < data.count {
-            let type = data[idx] >> 4
-            guard let (remaining, lenSize) = decodeRemainingLength(data, start: idx + 1) else { return }
+    private func drainBuffer() {
+        while true {
+            guard rxBuffer.count >= 2 else { return }
+            let type = rxBuffer[0] >> 4
+            guard let (remaining, lenSize) = decodeRemainingLength(rxBuffer, start: 1) else { return }
             let header = 1 + lenSize
-            let start = idx + header
-            let end = start + remaining
-            guard end <= data.count else { return }
-            let body = data.subdata(in: start..<end)
+            let end = header + remaining
+            guard rxBuffer.count >= end else { return }
+            let body = rxBuffer.subdata(in: header..<end)
+            let flags = rxBuffer[0]
+            rxBuffer.removeSubrange(0..<end)
+
             switch type {
             case 2: // CONNACK
                 let code = body.count >= 2 ? body[1] : 0xFF
                 if code == 0 {
-                    onState?(.connected)
+                    mqttReady = true
+                    reconnectAttempt = 0
+                    emit(.connected)
                     if !pendingSubs.isEmpty {
                         sendSubscribe(pendingSubs)
                     }
+                    startPing()
                 } else {
-                    onState?(.failed("MQTT CONNACK \(code)"))
+                    failAndMaybeReconnect("MQTT CONNACK \(code)")
                 }
             case 3: // PUBLISH
-                parsePublish(flags: data[idx], body: body)
+                parsePublish(flags: flags, body: body)
             case 9, 13: // SUBACK / PINGRESP
                 break
             default:
                 break
             }
-            idx = end
         }
     }
 
@@ -208,8 +306,11 @@ final class MqttClient: NSObject {
         var pos = 2 + tlen
         let qos = (flags >> 1) & 0x03
         if qos > 0 { pos += 2 }
+        guard pos <= body.count else { return }
         let payload = body.subdata(in: pos..<body.count)
-        onMessage?(topic, payload)
+        DispatchQueue.main.async { [weak self] in
+            self?.onMessage?(topic, payload)
+        }
     }
 
     private func mqttString(_ s: String) -> Data {
@@ -259,11 +360,30 @@ final class MqttClient: NSObject {
 extension MqttClient: URLSessionWebSocketDelegate {
     func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask,
                     didOpenWithProtocol protocol: String?) {
-        // CONNECT already sent after resume
+        work.async { [weak self] in
+            guard let self, self.task === webSocketTask else { return }
+            self.socketOpen = true
+            self.sendConnectPacket()
+        }
     }
 
     func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask,
                     didCloseWith closeCode: URLSessionWebSocketTask.CloseCode, reason: Data?) {
-        onState?(.disconnected)
+        work.async { [weak self] in
+            guard let self else { return }
+            if self.wantsConnection {
+                self.failAndMaybeReconnect("WebSocket closed (\(closeCode.rawValue))")
+            } else {
+                self.emit(.disconnected)
+            }
+        }
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        guard let error else { return }
+        work.async { [weak self] in
+            guard let self, self.wantsConnection else { return }
+            self.failAndMaybeReconnect(error.localizedDescription)
+        }
     }
 }
