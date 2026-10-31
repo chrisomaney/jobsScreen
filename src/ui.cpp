@@ -262,10 +262,12 @@ void AppUi::buildIdle() {
     score_chips_[i] = lv_obj_create(score_row_);
     lv_obj_set_size(score_chips_[i], chip_w, 56);
     style_glass_card(score_chips_[i]);
+    lv_obj_set_style_border_width(score_chips_[i], 3, 0);
     lv_obj_set_style_border_color(score_chips_[i], c(KIDS[i].color), 0);
     lv_obj_set_style_radius(score_chips_[i], 10, 0);
     lv_obj_set_style_pad_all(score_chips_[i], 2, 0);
     lv_obj_clear_flag(score_chips_[i], LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+    make_bar(score_chips_[i], 0, 0, chip_w, 4, KIDS[i].color, LV_OPA_COVER);
     lv_obj_t *chip = make_label(score_chips_[i], "", &lv_font_montserrat_14, COL_TEXT);
     lv_label_set_long_mode(chip, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(chip, chip_w - 8);
@@ -300,6 +302,7 @@ void AppUi::buildIdle() {
     const int col = static_cast<int>(i) % cols;
     lv_obj_set_pos(kid_btns_[i], start_x + col * (btn_w + gap_x), 90 + row * (btn_h + gap_y));
     style_glass_btn(kid_btns_[i]);
+    lv_obj_set_style_border_width(kid_btns_[i], 3, 0);
     lv_obj_set_style_border_color(kid_btns_[i], c(KIDS[i].color), 0);
     lv_obj_set_style_radius(kid_btns_[i], 12, 0);
     lv_obj_add_event_cb(kid_btns_[i], onPrizeKid, LV_EVENT_CLICKED, reinterpret_cast<void *>(i));

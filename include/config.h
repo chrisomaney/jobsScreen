@@ -13,11 +13,11 @@ struct KidProfile {
 };
 
 static const KidProfile KIDS[] = {
-  {"Xavier",  "xavier",  0x8A8A8A},  // muted grey accents on dark glass
-  {"Presley", "presley", 0xA3A3A3},
-  {"Jax",     "jax",     0xB8B8B8},
-  {"Banx",    "banx",    0xD4D4D4},
-  {"Hazel",   "hazel",   0xE5E5E5},
+  {"Xavier",  "xavier",  0x3B82F6},  // bright blue — prize score chips / picker
+  {"Presley", "presley", 0xEC4899},  // pink
+  {"Jax",     "jax",     0xF59E0B},  // amber
+  {"Banx",    "banx",    0x22C55E},  // green
+  {"Hazel",   "hazel",   0xA855F7},  // violet
 };
 
 struct PrizeDef {
