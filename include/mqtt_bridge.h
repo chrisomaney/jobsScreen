@@ -33,8 +33,17 @@ private:
   RewardEngine *rewards_ = nullptr;
   uint32_t last_reconnect_ms_ = 0;
   uint32_t last_repub_ms_ = 0;
+  // Never publish from inside the PubSubClient callback — it freezes the RGB
+  // panel (LVGL starved) and can leave the screen looking mirrored/shifted.
+  bool pending_publish_all_ = false;
+  bool pending_publish_config_ = false;
+  bool pending_publish_catalog_ = false;
+  bool pending_publish_rules_ = false;
 
   void ensureConnected();
+  void mqttYieldUi();
+  void flushPendingPublishes();
+  void publishSummaries();
   String topicJob(size_t kid, size_t job) const;
   String topicInternet(size_t kid) const;
   String topicProgress(size_t kid) const;

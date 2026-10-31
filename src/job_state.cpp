@@ -893,6 +893,7 @@ bool JobState::setCatalogFromJson(const char *json) {
   memcpy(prizes_, next, sizeof(prizes_));
   prize_count_ = n;
   savePrizeCatalog();
+  bump();  // refresh prize idle / scores after "Save prizes"
   return true;
 }
 

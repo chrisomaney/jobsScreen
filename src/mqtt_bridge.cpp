@@ -3,6 +3,7 @@
 #include <ArduinoJson.h>
 
 #include "app_secrets.h"
+#include "display_board.h"
 
 namespace {
 
@@ -103,9 +104,10 @@ void MqttBridge::handleMessage(char *topic, byte *payload, unsigned int length) 
   if (t == MQTT_CONFIG_SET) {
     if (state_->applyConfigJson(reinterpret_cast<const char *>(payload), length)) {
       Serial.println("[mqtt] job config updated from web app");
-      publishAll();  // assignments change counts + internet on/off
+      // Defer HA republish — publishing from the MQTT callback blocks LVGL.
+      pending_publish_all_ = true;
     } else {
-      publishConfig();  // nothing changed — still echo so the web app can confirm
+      pending_publish_config_ = true;  // echo so the web app can confirm
     }
     return;
   }
@@ -149,7 +151,7 @@ void MqttBridge::handleMessage(char *topic, byte *payload, unsigned int length) 
   }
   if (t == String(MQTT_BASE) + "/cmd/reset_all") {
     state_->resetAll();
-    publishAll();
+    pending_publish_all_ = true;
     return;
   }
   if (t == String(MQTT_BASE) + "/cmd/reset_rewards") {
@@ -167,7 +169,7 @@ void MqttBridge::handleMessage(char *topic, byte *payload, unsigned int length) 
       body += static_cast<char>(payload[i]);
     }
     if (state_->setCatalogFromJson(body.c_str())) {
-      publishCatalog();
+      pending_publish_catalog_ = true;
       Serial.println("[mqtt] prize catalog updated");
     }
     return;
@@ -180,7 +182,7 @@ void MqttBridge::handleMessage(char *topic, byte *payload, unsigned int length) 
       body += static_cast<char>(payload[i]);
     }
     if (rewards_->applyRulesJson(body.c_str())) {
-      publishRules();
+      pending_publish_rules_ = true;
       Serial.println("[mqtt] reward rules updated");
     }
     return;
@@ -272,10 +274,7 @@ void MqttBridge::handleMessage(char *topic, byte *payload, unsigned int length) 
     String expect = String(MQTT_BASE) + "/" + KIDS[k].slug + "/cmd/reset";
     if (t == expect) {
       state_->resetKid(k);
-      for (size_t j = 0; j < JOB_COUNT; ++j) {
-        publishJob(k, j);
-      }
-      publishKidSummary(k);
+      pending_publish_all_ = true;  // republish outside the callback
       return;
     }
   }
@@ -468,15 +467,63 @@ void MqttBridge::publishCelebrateBehaviour(size_t kid, int32_t points, const cha
   client_.publish(MQTT_CELEBRATE_TOPIC, json.c_str(), false);
 }
 
+void MqttBridge::mqttYieldUi() {
+  // RGB panel needs regular LVGL ticks; long MQTT bursts otherwise freeze /
+  // tear the screen into a mirrored, shifted mess until reboot.
+  display_board_loop();
+  yield();
+}
+
+void MqttBridge::publishSummaries() {
+  for (size_t k = 0; k < KID_COUNT; ++k) {
+    publishKidSummary(k);
+    mqttYieldUi();
+  }
+}
+
 void MqttBridge::publishAll() {
   publishConfig();
+  mqttYieldUi();
   publishCatalog();
+  mqttYieldUi();
   publishRules();
+  mqttYieldUi();
+  size_t burst = 0;
   for (size_t k = 0; k < KID_COUNT; ++k) {
     for (size_t j = 0; j < JOB_COUNT; ++j) {
       publishJob(k, j);
+      if ((++burst % 4) == 0) {
+        mqttYieldUi();
+      }
     }
     publishKidSummary(k);
+    mqttYieldUi();
+  }
+}
+
+void MqttBridge::flushPendingPublishes() {
+  if (pending_publish_all_) {
+    pending_publish_all_ = false;
+    pending_publish_config_ = false;
+    pending_publish_catalog_ = false;
+    pending_publish_rules_ = false;
+    publishAll();
+    return;
+  }
+  if (pending_publish_config_) {
+    pending_publish_config_ = false;
+    publishConfig();
+    mqttYieldUi();
+  }
+  if (pending_publish_catalog_) {
+    pending_publish_catalog_ = false;
+    publishCatalog();
+    mqttYieldUi();
+  }
+  if (pending_publish_rules_) {
+    pending_publish_rules_ = false;
+    publishRules();
+    mqttYieldUi();
   }
 }
 
@@ -487,10 +534,20 @@ void MqttBridge::loop() {
   ensureConnected();
   if (client_.connected()) {
     client_.loop();
+    flushPendingPublishes();
     const uint32_t now = millis();
+    // Light keepalive for HA after broker restarts — full job-state blast every
+    // minute was freezing the panel. Job states still republish on real changes.
     if (now - last_repub_ms_ >= MQTT_REPUBLISH_MS) {
       last_repub_ms_ = now;
-      publishAll();
+      client_.publish(MQTT_STATUS_TOPIC, "online", true);
+      publishConfig();
+      mqttYieldUi();
+      publishCatalog();
+      mqttYieldUi();
+      publishRules();
+      mqttYieldUi();
+      publishSummaries();
     }
   }
 }
