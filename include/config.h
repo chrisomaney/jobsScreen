@@ -158,12 +158,13 @@ static const uint32_t COL_GLASS        = 0x222222;  // slightly lifted glass
 static const uint32_t COL_BORDER       = 0x3A3A3A;  // thin glass edge
 static const uint32_t COL_EXPECT       = 0xA3A3A3;  // soft grey accent — Expectations
 static const uint32_t COL_PAID         = 0xD4D4D4;  // lighter grey — Paid jobs
-static const uint32_t COL_DONE         = 0xFFFFFF;  // done / success reads as white
+static const uint32_t COL_DONE         = 0x22C55E;  // bright green — done / success
+static const uint32_t COL_DONE_ROW     = 0x0F2A1A;  // dark green glass behind done rows
 static const uint32_t COL_TEXT         = 0xFFFFFF;
 static const uint32_t COL_MUTED        = 0x8A8A8A;
 static const uint32_t COL_BTN          = 0x2A2A2A;  // dark grey buttons
 static const uint32_t COL_BTN_PRESSED  = 0x3F3F3F;
-static const uint32_t COL_BTN_ACTIVE   = 0x404040;  // completed state
+static const uint32_t COL_BTN_ACTIVE   = 0x16A34A;  // bright green Done button when complete
 
 // Prize idle — same dark glass language (no neon)
 static const uint32_t COL_PRIZE_BG = 0x0A0A0A;

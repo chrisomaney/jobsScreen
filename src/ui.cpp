@@ -501,7 +501,7 @@ void AppUi::buildKidScaffold() {
   lv_obj_align(progress_bar_, LV_ALIGN_TOP_RIGHT, -12, 62);
   lv_bar_set_range(progress_bar_, 0, 100);
   lv_obj_set_style_bg_color(progress_bar_, c(COL_CARD), LV_PART_MAIN);
-  lv_obj_set_style_bg_color(progress_bar_, c(COL_TEXT), LV_PART_INDICATOR);
+  lv_obj_set_style_bg_color(progress_bar_, c(COL_DONE), LV_PART_INDICATOR);
   lv_obj_set_style_border_width(progress_bar_, 1, LV_PART_MAIN);
   lv_obj_set_style_border_color(progress_bar_, c(COL_BORDER), LV_PART_MAIN);
   lv_obj_set_style_radius(progress_bar_, 7, LV_PART_MAIN);
@@ -723,19 +723,23 @@ void AppUi::updateJobRow(size_t job) {
   lv_obj_t *lbl = lv_obj_get_child(btn, 0);
   if (done) {
     lv_obj_set_style_bg_color(btn, c(COL_BTN_ACTIVE), 0);
+    lv_obj_set_style_border_color(btn, c(COL_DONE), 0);
     if (lbl) {
       lv_label_set_text(lbl, LV_SYMBOL_OK " Done");
+      lv_obj_set_style_text_color(lbl, c(COL_TEXT), 0);
     }
     if (job_rows_[job]) {
-      lv_obj_set_style_bg_color(job_rows_[job], c(COL_GLASS), 0);
-      lv_obj_set_style_border_color(job_rows_[job], c(COL_TEXT), 0);
+      lv_obj_set_style_bg_color(job_rows_[job], c(COL_DONE_ROW), 0);
+      lv_obj_set_style_border_color(job_rows_[job], c(COL_DONE), 0);
     }
   } else {
     const uint32_t accent =
         (JobState::jobCategory(job) == JobCategory::Expectation) ? COL_EXPECT : COL_PAID;
     lv_obj_set_style_bg_color(btn, c(COL_BTN), 0);
+    lv_obj_set_style_border_color(btn, c(COL_BORDER), 0);
     if (lbl) {
       lv_label_set_text(lbl, "Done");
+      lv_obj_set_style_text_color(lbl, c(COL_TEXT), 0);
     }
     if (job_rows_[job]) {
       lv_obj_set_style_bg_color(job_rows_[job], c(COL_CARD), 0);
@@ -758,7 +762,7 @@ void AppUi::updateKidHeader() {
   lv_bar_set_value(progress_bar_, pct, LV_ANIM_OFF);
 
   char buf[64];
-  snprintf(buf, sizeof(buf), "%u/%u done - hold Done to undo", static_cast<unsigned>(cat_done),
+  snprintf(buf, sizeof(buf), "%u/%u done - hold green to undo", static_cast<unsigned>(cat_done),
            static_cast<unsigned>(cat_total));
   lv_label_set_text(progress_label_, buf);
 
