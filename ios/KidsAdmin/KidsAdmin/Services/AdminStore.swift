@@ -14,14 +14,19 @@ final class AdminStore: ObservableObject {
     @Published var internetSchedules: [InternetSchedule] = []
     @Published var lastError: String?
     @Published var bleReady = false
+    @Published var bleScanning = false
+    @Published var bleConnecting = false
+    @Published var blePanelName: String?
+    @Published var bleError: String?
 
-    let ble = BlePanelClient()
+    private let ble = BlePanelClient()
 
     private var settings: SettingsStore?
     private let mqtt = MqttClient()
     private var rules: [[String: Any]] = []
     private var connectDebounce: Task<Void, Never>?
     private var bleWatchStarted = false
+    private var bleBag = Set<AnyCancellable>()
     /// MQTT or BLE is usable for saving jobs.
     var canSaveJobs: Bool { connected || bleReady }
 
@@ -112,22 +117,47 @@ final class AdminStore: ObservableObject {
         if !bleWatchStarted {
             bleWatchStarted = true
             ble.$phase
-                .receive(on: RunLoop.main)
+                .receive(on: DispatchQueue.main)
                 .sink { [weak self] phase in
-                    self?.bleReady = (phase == .ready)
-                    self?.objectWillChange.send()
+                    Task { @MainActor in
+                        self?.applyBlePhase(phase)
+                    }
+                }
+                .store(in: &bleBag)
+            ble.$panelName
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] name in
+                    Task { @MainActor in
+                        self?.blePanelName = name
+                    }
                 }
                 .store(in: &bleBag)
         }
         ble.startScan()
+        applyBlePhase(ble.phase)
     }
 
     func stopBle() {
         ble.stop()
-        bleReady = false
+        applyBlePhase(.idle)
+        blePanelName = nil
+        bleError = nil
     }
 
-    private var bleBag = Set<AnyCancellable>()
+    func refreshBleConfig() {
+        ble.requestConfig()
+    }
+
+    private func applyBlePhase(_ phase: BlePanelClient.Phase) {
+        bleReady = (phase == .ready)
+        bleScanning = (phase == .scanning)
+        bleConnecting = (phase == .connecting)
+        if case .failed(let msg) = phase {
+            bleError = msg
+        } else if phase != .idle {
+            bleError = nil
+        }
+    }
 
     // MARK: - Internet
 

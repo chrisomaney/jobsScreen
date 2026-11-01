@@ -34,7 +34,7 @@ struct KidLiveStatus: Equatable {
     var pct: Int = 0
 }
 
-struct InternetSchedule: Identifiable, Equatable {
+struct InternetSchedule: Identifiable, Equatable, Hashable {
     var id: String
     var label: String
     var kids: [String]

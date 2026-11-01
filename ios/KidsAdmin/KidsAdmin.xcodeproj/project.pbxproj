@@ -25,6 +25,8 @@
 		A10000000000000000000010 /* BlePanelClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000011 /* BlePanelClient.swift */; };
 		A10000000000000000000011 /* index.html in Resources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000012 /* index.html */; };
 		A10000000000000000000012 /* rewards-admin.html in Resources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000013 /* rewards-admin.html */; };
+		A10000000000000000000020 /* WebKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B10000000000000000000020 /* WebKit.framework */; };
+		A10000000000000000000021 /* CoreBluetooth.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B10000000000000000000021 /* CoreBluetooth.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -47,6 +49,8 @@
 		B10000000000000000000011 /* BlePanelClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlePanelClient.swift; sourceTree = "<group>"; };
 		B10000000000000000000012 /* index.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; path = index.html; sourceTree = "<group>"; };
 		B10000000000000000000013 /* rewards-admin.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; path = "rewards-admin.html"; sourceTree = "<group>"; };
+		B10000000000000000000020 /* WebKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WebKit.framework; path = System/Library/Frameworks/WebKit.framework; sourceTree = SDKROOT; };
+		B10000000000000000000021 /* CoreBluetooth.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreBluetooth.framework; path = System/Library/Frameworks/CoreBluetooth.framework; sourceTree = SDKROOT; };
 		C10000000000000000000001 /* KidsAdmin.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = KidsAdmin.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -55,6 +59,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A10000000000000000000020 /* WebKit.framework in Frameworks */,
+				A10000000000000000000021 /* CoreBluetooth.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -65,8 +71,18 @@
 			isa = PBXGroup;
 			children = (
 				E10000000000000000000002 /* KidsAdmin */,
+				E10000000000000000000008 /* Frameworks */,
 				E10000000000000000000003 /* Products */,
 			);
+			sourceTree = "<group>";
+		};
+		E10000000000000000000008 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				B10000000000000000000020 /* WebKit.framework */,
+				B10000000000000000000021 /* CoreBluetooth.framework */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 		E10000000000000000000002 /* KidsAdmin */ = {

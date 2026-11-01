@@ -3,7 +3,6 @@ import SwiftUI
 struct InternetView: View {
     @EnvironmentObject private var admin: AdminStore
     @State private var editing: InternetSchedule?
-    @State private var showEditor = false
 
     var body: some View {
         NavigationStack {
@@ -65,7 +64,6 @@ struct InternetView: View {
                     ForEach(admin.internetSchedules) { sched in
                         Button {
                             editing = sched
-                            showEditor = true
                         } label: {
                             VStack(alignment: .leading, spacing: 4) {
                                 HStack {
@@ -98,7 +96,6 @@ struct InternetView: View {
                             onMinute: 0,
                             enabled: true
                         )
-                        showEditor = true
                     } label: {
                         Label("Add internet-off schedule", systemImage: "plus.circle")
                     }
@@ -130,15 +127,15 @@ struct InternetView: View {
             }
             .dismissKeyboardOnScroll()
             .navigationTitle("Internet")
-            .sheet(isPresented: $showEditor) {
-                if let editing {
-                    InternetScheduleEditor(schedule: editing) { saved in
+            .sheet(item: $editing) { sched in
+                InternetScheduleEditor(
+                    schedule: sched,
+                    onSave: { saved in
                         admin.upsertInternetSchedule(saved)
-                        showEditor = false
-                    } onCancel: {
-                        showEditor = false
-                    }
-                }
+                        editing = nil
+                    },
+                    onCancel: { editing = nil }
+                )
             }
         }
     }
