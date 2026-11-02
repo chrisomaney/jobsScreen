@@ -79,7 +79,8 @@ void maintainDailyReset() {
   last_check = millis();
   if (g_state.rollDay(clock_job_day())) {
     Serial.println("[jobs] new day — all jobs reset");
-    g_mqtt.publishAll();
+    // Chunked across loop() — never block the RGB panel with a full blast.
+    g_mqtt.requestPublishAll();
   }
 }
 

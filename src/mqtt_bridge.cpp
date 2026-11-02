@@ -1,9 +1,9 @@
 #include "mqtt_bridge.h"
 
 #include <ArduinoJson.h>
+#include <string.h>
 
 #include "app_secrets.h"
-#include "display_board.h"
 
 namespace {
 
@@ -25,6 +25,10 @@ void MqttBridge::begin(JobState *state, RewardEngine *rewards) {
   client_.setServer(MQTT_HOST, MQTT_PORT);
   client_.setBufferSize(6144);  // config JSON grows with custom jobs
   client_.setCallback(mqttTrampoline);
+  pending_config_buf_[0] = '\0';
+  pending_catalog_buf_[0] = '\0';
+  pending_rules_buf_[0] = '\0';
+  pending_net_sched_buf_[0] = '\0';
 }
 
 String MqttBridge::topicJob(size_t kid, size_t job) const {
@@ -41,6 +45,18 @@ String MqttBridge::topicProgress(size_t kid) const {
 
 String MqttBridge::topicRewardTally(size_t kid) const {
   return String(MQTT_BASE) + "/" + KIDS[kid].slug + "/rewards/tally";
+}
+
+void MqttBridge::queuePayload(char *dest, size_t *dest_len, bool *flag, const byte *payload,
+                              unsigned int length) {
+  if (!dest || !dest_len || !flag) {
+    return;
+  }
+  const size_t n = length < (kPendingPayloadMax - 1) ? length : (kPendingPayloadMax - 1);
+  memcpy(dest, payload, n);
+  dest[n] = '\0';
+  *dest_len = n;
+  *flag = true;
 }
 
 void MqttBridge::ensureConnected() {
@@ -91,7 +107,7 @@ void MqttBridge::ensureConnected() {
   }
   // Shared MikroTik profile — admin can force on/off; panel does not auto-manage it.
   client_.subscribe((String(MQTT_BASE) + "/common/internet/set").c_str());
-  publishAll();
+  requestPublishAll();
   Serial.println("[mqtt] connected");
 }
 
@@ -103,13 +119,8 @@ void MqttBridge::handleMessage(char *topic, byte *payload, unsigned int length) 
   Serial.printf("[mqtt] cmd %s\n", t.c_str());
 
   if (t == MQTT_CONFIG_SET) {
-    if (state_->applyConfigJson(reinterpret_cast<const char *>(payload), length)) {
-      Serial.println("[mqtt] job config updated from web app");
-      // Defer HA republish — publishing from the MQTT callback blocks LVGL.
-      pending_publish_all_ = true;
-    } else {
-      pending_publish_config_ = true;  // echo so the web app can confirm
-    }
+    // Defer JSON/NVS — applying + republishing here freezes the RGB panel.
+    queuePayload(pending_config_buf_, &pending_config_len_, &pending_config_apply_, payload, length);
     return;
   }
 
@@ -132,7 +143,7 @@ void MqttBridge::handleMessage(char *topic, byte *payload, unsigned int length) 
         mode = JobState::InternetOverride::Auto;
       }
       state_->setInternetOverride(k, mode);
-      publishKidSummary(k);
+      pending_publish_summaries_ = true;
       Serial.printf("[mqtt] internet override %s = %s\n", KIDS[k].slug, body.c_str());
       return;
     }
@@ -157,51 +168,23 @@ void MqttBridge::handleMessage(char *topic, byte *payload, unsigned int length) 
   }
   if (t == String(MQTT_BASE) + "/cmd/reset_rewards") {
     state_->resetRewards();
-    for (size_t k = 0; k < KID_COUNT; ++k) {
-      publishRewardTally(k);
-    }
+    pending_publish_summaries_ = true;
     return;
   }
 
   if (t == MQTT_CATALOG_SET) {
-    String body;
-    body.reserve(length + 1);
-    for (unsigned int i = 0; i < length; ++i) {
-      body += static_cast<char>(payload[i]);
-    }
-    if (state_->setCatalogFromJson(body.c_str())) {
-      pending_publish_catalog_ = true;
-      Serial.println("[mqtt] prize catalog updated");
-    }
+    queuePayload(pending_catalog_buf_, &pending_catalog_len_, &pending_catalog_apply_, payload, length);
     return;
   }
 
   if (t == MQTT_RULES_SET && rewards_) {
-    String body;
-    body.reserve(length + 1);
-    for (unsigned int i = 0; i < length; ++i) {
-      body += static_cast<char>(payload[i]);
-    }
-    if (rewards_->applyRulesJson(body.c_str())) {
-      pending_publish_rules_ = true;
-      Serial.println("[mqtt] reward rules updated");
-    }
+    queuePayload(pending_rules_buf_, &pending_rules_len_, &pending_rules_apply_, payload, length);
     return;
   }
 
   if (t == MQTT_NET_SCHEDULES_SET) {
-    String body;
-    body.reserve(length + 1);
-    for (unsigned int i = 0; i < length; ++i) {
-      body += static_cast<char>(payload[i]);
-    }
-    if (state_->applyInternetSchedulesJson(body.c_str())) {
-      pending_publish_net_sched_ = true;
-      pending_publish_all_ = true;  // internet on/off may flip for some kids
-      Serial.println("[mqtt] internet schedules updated");
-    } else {
-      pending_publish_net_sched_ = true;  // echo current
-    }
+    queuePayload(pending_net_sched_buf_, &pending_net_sched_len_, &pending_net_sched_apply_, payload,
+                length);
     return;
   }
 
@@ -255,6 +238,7 @@ void MqttBridge::handleMessage(char *topic, byte *payload, unsigned int length) 
     // Splash on panel for plain ±; Behaviour uses custom title/message overlays.
     state_->adjustPoints(kid, points, !behaviour);
     const uint32_t after = state_->rewardTally(kid);
+    // Keep MQTT traffic tiny in-callback — one tally + one event is OK.
     publishRewardTally(kid);
     publishBonus(kid, points, before, after);
     if (behaviour) {
@@ -293,6 +277,46 @@ void MqttBridge::handleMessage(char *topic, byte *payload, unsigned int length) 
       state_->resetKid(k);
       pending_publish_all_ = true;  // republish outside the callback
       return;
+    }
+  }
+}
+
+void MqttBridge::processDeferredApplies() {
+  if (pending_config_apply_) {
+    pending_config_apply_ = false;
+    if (state_->applyConfigJson(pending_config_buf_, pending_config_len_)) {
+      Serial.println("[mqtt] job config updated from web app");
+      // Assignments change counts/internet — do NOT blast every job topic.
+      requestPublishConfigAndSummaries();
+    } else {
+      pending_publish_config_ = true;  // echo so the web app can confirm
+    }
+  }
+
+  if (pending_catalog_apply_) {
+    pending_catalog_apply_ = false;
+    if (state_->setCatalogFromJson(pending_catalog_buf_)) {
+      pending_publish_catalog_ = true;
+      Serial.println("[mqtt] prize catalog updated");
+    }
+  }
+
+  if (pending_rules_apply_ && rewards_) {
+    pending_rules_apply_ = false;
+    if (rewards_->applyRulesJson(pending_rules_buf_)) {
+      pending_publish_rules_ = true;
+      Serial.println("[mqtt] reward rules updated");
+    }
+  }
+
+  if (pending_net_sched_apply_) {
+    pending_net_sched_apply_ = false;
+    if (state_->applyInternetSchedulesJson(pending_net_sched_buf_)) {
+      pending_publish_net_sched_ = true;
+      pending_publish_summaries_ = true;  // internet may flip
+      Serial.println("[mqtt] internet schedules updated");
+    } else {
+      pending_publish_net_sched_ = true;  // echo current
     }
   }
 }
@@ -493,71 +517,189 @@ void MqttBridge::publishCelebrateBehaviour(size_t kid, int32_t points, const cha
   client_.publish(MQTT_CELEBRATE_TOPIC, json.c_str(), false);
 }
 
-void MqttBridge::mqttYieldUi() {
-  // RGB panel needs regular LVGL ticks; long MQTT bursts otherwise freeze /
-  // tear the screen into a mirrored, shifted mess until reboot.
-  display_board_loop();
-  yield();
-}
-
 void MqttBridge::publishSummaries() {
   for (size_t k = 0; k < KID_COUNT; ++k) {
     publishKidSummary(k);
-    mqttYieldUi();
+  }
+}
+
+void MqttBridge::startPublishJob(bool include_jobs, bool include_catalog, bool include_rules,
+                                 bool include_net_sched) {
+  pub_include_jobs_ = include_jobs;
+  pub_include_catalog_ = include_catalog;
+  pub_include_rules_ = include_rules;
+  pub_include_net_sched_ = include_net_sched;
+  pub_kid_ = 0;
+  pub_job_ = 0;
+  pub_phase_ = PubPhase::Config;
+  Serial.printf("[mqtt] publish start (jobs=%d catalog=%d rules=%d sched=%d)\n", include_jobs ? 1 : 0,
+                include_catalog ? 1 : 0, include_rules ? 1 : 0, include_net_sched ? 1 : 0);
+}
+
+void MqttBridge::pumpPublish() {
+  if (!client_.connected()) {
+    pub_phase_ = PubPhase::Idle;
+    return;
+  }
+
+  // Start a new multi-step job when idle.
+  if (pub_phase_ == PubPhase::Idle) {
+    if (pending_publish_all_) {
+      pending_publish_all_ = false;
+      pending_publish_config_ = false;
+      pending_publish_catalog_ = false;
+      pending_publish_rules_ = false;
+      pending_publish_net_sched_ = false;
+      pending_publish_summaries_ = false;
+      startPublishJob(true, true, true, true);
+    } else if (pending_publish_config_ || pending_publish_catalog_ || pending_publish_rules_ ||
+               pending_publish_net_sched_ || pending_publish_summaries_) {
+      const bool cfg = pending_publish_config_;
+      const bool cat = pending_publish_catalog_;
+      const bool rules = pending_publish_rules_;
+      const bool sched = pending_publish_net_sched_;
+      const bool sums = pending_publish_summaries_;
+      pending_publish_config_ = false;
+      pending_publish_catalog_ = false;
+      pending_publish_rules_ = false;
+      pending_publish_net_sched_ = false;
+      pending_publish_summaries_ = false;
+      // Reuse the machine; skip unused stages inside pump.
+      pub_include_jobs_ = false;
+      pub_include_catalog_ = cat;
+      pub_include_rules_ = rules;
+      pub_include_net_sched_ = sched;
+      pub_kid_ = 0;
+      pub_job_ = 0;
+      if (cfg) {
+        pub_phase_ = PubPhase::Config;
+      } else if (cat) {
+        pub_phase_ = PubPhase::Catalog;
+      } else if (rules) {
+        pub_phase_ = PubPhase::Rules;
+      } else if (sched) {
+        pub_phase_ = PubPhase::NetSched;
+      } else if (sums) {
+        pub_phase_ = PubPhase::Summaries;
+      }
+    } else {
+      return;
+    }
+  }
+
+  uint8_t budget = kPubsPerPump;
+  while (budget > 0 && pub_phase_ != PubPhase::Idle) {
+    switch (pub_phase_) {
+      case PubPhase::Config:
+        publishConfig();
+        --budget;
+        if (pub_include_catalog_) {
+          pub_phase_ = PubPhase::Catalog;
+        } else if (pub_include_rules_) {
+          pub_phase_ = PubPhase::Rules;
+        } else if (pub_include_net_sched_) {
+          pub_phase_ = PubPhase::NetSched;
+        } else if (pub_include_jobs_) {
+          pub_phase_ = PubPhase::Jobs;
+          pub_kid_ = 0;
+          pub_job_ = 0;
+        } else {
+          pub_phase_ = PubPhase::Summaries;
+          pub_kid_ = 0;
+        }
+        break;
+
+      case PubPhase::Catalog:
+        publishCatalog();
+        --budget;
+        if (pub_include_rules_) {
+          pub_phase_ = PubPhase::Rules;
+        } else if (pub_include_net_sched_) {
+          pub_phase_ = PubPhase::NetSched;
+        } else if (pub_include_jobs_) {
+          pub_phase_ = PubPhase::Jobs;
+          pub_kid_ = 0;
+          pub_job_ = 0;
+        } else {
+          pub_phase_ = PubPhase::Summaries;
+          pub_kid_ = 0;
+        }
+        break;
+
+      case PubPhase::Rules:
+        publishRules();
+        --budget;
+        if (pub_include_net_sched_) {
+          pub_phase_ = PubPhase::NetSched;
+        } else if (pub_include_jobs_) {
+          pub_phase_ = PubPhase::Jobs;
+          pub_kid_ = 0;
+          pub_job_ = 0;
+        } else {
+          pub_phase_ = PubPhase::Summaries;
+          pub_kid_ = 0;
+        }
+        break;
+
+      case PubPhase::NetSched:
+        publishInternetSchedules();
+        --budget;
+        if (pub_include_jobs_) {
+          pub_phase_ = PubPhase::Jobs;
+          pub_kid_ = 0;
+          pub_job_ = 0;
+        } else {
+          pub_phase_ = PubPhase::Summaries;
+          pub_kid_ = 0;
+        }
+        break;
+
+      case PubPhase::Jobs: {
+        // Advance through the matrix; skip unassigned quickly without counting
+        // against the publish budget so we finish in reasonable time.
+        uint8_t scanned = 0;
+        while (budget > 0 && pub_phase_ == PubPhase::Jobs && scanned < 32) {
+          ++scanned;
+          if (JobState::isAssigned(pub_kid_, pub_job_)) {
+            publishJob(pub_kid_, pub_job_);
+            --budget;
+          }
+          ++pub_job_;
+          if (pub_job_ >= JOB_COUNT) {
+            pub_job_ = 0;
+            ++pub_kid_;
+            if (pub_kid_ >= KID_COUNT) {
+              pub_phase_ = PubPhase::Summaries;
+              pub_kid_ = 0;
+              break;
+            }
+          }
+        }
+        break;
+      }
+
+      case PubPhase::Summaries:
+        publishKidSummary(pub_kid_);
+        --budget;
+        ++pub_kid_;
+        if (pub_kid_ >= KID_COUNT) {
+          pub_phase_ = PubPhase::Idle;
+          Serial.println("[mqtt] publish done");
+        }
+        break;
+
+      case PubPhase::Idle:
+        break;
+    }
   }
 }
 
 void MqttBridge::publishAll() {
-  publishConfig();
-  mqttYieldUi();
-  publishCatalog();
-  mqttYieldUi();
-  publishRules();
-  mqttYieldUi();
-  publishInternetSchedules();
-  mqttYieldUi();
-  size_t burst = 0;
-  for (size_t k = 0; k < KID_COUNT; ++k) {
-    for (size_t j = 0; j < JOB_COUNT; ++j) {
-      publishJob(k, j);
-      if ((++burst % 4) == 0) {
-        mqttYieldUi();
-      }
-    }
-    publishKidSummary(k);
-    mqttYieldUi();
-  }
-}
-
-void MqttBridge::flushPendingPublishes() {
-  if (pending_publish_all_) {
-    pending_publish_all_ = false;
-    pending_publish_config_ = false;
-    pending_publish_catalog_ = false;
-    pending_publish_rules_ = false;
-    pending_publish_net_sched_ = false;
-    publishAll();
-    return;
-  }
-  if (pending_publish_config_) {
-    pending_publish_config_ = false;
-    publishConfig();
-    mqttYieldUi();
-  }
-  if (pending_publish_catalog_) {
-    pending_publish_catalog_ = false;
-    publishCatalog();
-    mqttYieldUi();
-  }
-  if (pending_publish_rules_) {
-    pending_publish_rules_ = false;
-    publishRules();
-    mqttYieldUi();
-  }
-  if (pending_publish_net_sched_) {
-    pending_publish_net_sched_ = false;
-    publishInternetSchedules();
-    mqttYieldUi();
+  // Compatibility for callers that still want a "full sync" — always chunked.
+  pending_publish_all_ = true;
+  // Kick the first slice immediately so reconnect doesn't wait an extra loop.
+  if (pub_phase_ == PubPhase::Idle) {
+    pumpPublish();
   }
 }
 
@@ -566,24 +708,24 @@ void MqttBridge::loop() {
     return;
   }
   ensureConnected();
-  if (client_.connected()) {
-    client_.loop();
-    flushPendingPublishes();
-    const uint32_t now = millis();
-    // Light keepalive for HA after broker restarts — full job-state blast every
-    // minute was freezing the panel. Job states still republish on real changes.
-    if (now - last_repub_ms_ >= MQTT_REPUBLISH_MS) {
-      last_repub_ms_ = now;
-      client_.publish(MQTT_STATUS_TOPIC, "online", true);
-      publishConfig();
-      mqttYieldUi();
-      publishCatalog();
-      mqttYieldUi();
-      publishRules();
-      mqttYieldUi();
-      publishInternetSchedules();
-      mqttYieldUi();
-      publishSummaries();
-    }
+  if (!client_.connected()) {
+    return;
+  }
+
+  client_.loop();
+  processDeferredApplies();
+  pumpPublish();
+
+  const uint32_t now = millis();
+  // Light keepalive for HA after broker restarts — never full job-state blast
+  // on a timer (that freezes the panel). Job topics still update on real changes.
+  if (pub_phase_ == PubPhase::Idle && now - last_repub_ms_ >= MQTT_REPUBLISH_MS) {
+    last_repub_ms_ = now;
+    client_.publish(MQTT_STATUS_TOPIC, "online", true);
+    pending_publish_config_ = true;
+    pending_publish_catalog_ = true;
+    pending_publish_rules_ = true;
+    pending_publish_net_sched_ = true;
+    pending_publish_summaries_ = true;
   }
 }

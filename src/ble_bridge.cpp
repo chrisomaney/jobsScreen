@@ -78,7 +78,8 @@ void handleCompletePayload(const String &json) {
     const bool ok = g_ble_state && g_ble_state->applyConfigJson(body.c_str(), body.length());
     if (ok) {
       if (g_ble_mqtt) {
-        g_ble_mqtt->requestPublishAll();
+        // Config/assignments only — full job-topic blast freezes the RGB panel.
+        g_ble_mqtt->requestPublishConfigAndSummaries();
       }
       sendConfigState();
       sendAck(true, "config applied");

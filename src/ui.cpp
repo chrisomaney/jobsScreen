@@ -690,9 +690,15 @@ void AppUi::rebuildJobList() {
       (active_page_ == KidPage::Expectations) ? JobCategory::Expectation : JobCategory::Paid;
   const uint32_t accent = (active_page_ == KidPage::Expectations) ? COL_EXPECT : COL_PAID;
 
+  size_t built = 0;
   for (size_t j = 0; j < JOB_COUNT; ++j) {
     if (JobState::jobCategory(j) != cat || !JobState::isAssigned(active_kid_, j)) {
       continue;
+    }
+    // Keep the RGB panel painting while we rebuild lots of rows after a save.
+    if ((++built % 3) == 0) {
+      display_board_loop();
+      yield();
     }
 
     lv_obj_t *row = lv_obj_create(job_list_);
@@ -736,6 +742,8 @@ void AppUi::rebuildJobList() {
 
     updateJobRow(j);
   }
+  lock_screen_layout(screen_kid_);
+  harden_scroll_list(job_list_);
 }
 
 void AppUi::updateJobRow(size_t job) {
@@ -1169,6 +1177,15 @@ void AppUi::tick() {
         rebuildJobList();  // job list for this kid changed (web app)
       }
       refreshActiveScreen();
+      // Config saves used to leave the RGB panel shifted/mirrored — re-pin hard.
+      if (cfg_changed) {
+        lock_screen_layout(screen_idle_);
+        lock_screen_layout(screen_home_);
+        lock_screen_layout(screen_kid_);
+        lock_screen_layout(screen_not_done_);
+        lock_screen_layout(screen_doer_);
+        display_board_loop();
+      }
     }
   }
 
