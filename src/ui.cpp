@@ -690,15 +690,11 @@ void AppUi::rebuildJobList() {
       (active_page_ == KidPage::Expectations) ? JobCategory::Expectation : JobCategory::Paid;
   const uint32_t accent = (active_page_ == KidPage::Expectations) ? COL_EXPECT : COL_PAID;
 
-  size_t built = 0;
+  // Do NOT call lv_timer_handler / display_board_loop while mutating the tree —
+  // nested paints on this RGB panel tear/freeze the framebuffer.
   for (size_t j = 0; j < JOB_COUNT; ++j) {
     if (JobState::jobCategory(j) != cat || !JobState::isAssigned(active_kid_, j)) {
       continue;
-    }
-    // Keep the RGB panel painting while we rebuild lots of rows after a save.
-    if ((++built % 3) == 0) {
-      display_board_loop();
-      yield();
     }
 
     lv_obj_t *row = lv_obj_create(job_list_);
@@ -1166,26 +1162,55 @@ void AppUi::tick() {
     const bool cfg_changed = cfg_rev != seen_config_revision_;
     seen_revision_ = rev;
     seen_config_revision_ = cfg_rev;
-    if (screen_kind_ == ScreenKind::Idle) {
-      if (state_->pendingSplash().kind != JobState::SplashKind::None) {
-        showPrizeSplashFromState();
-      } else {
-        refreshActiveScreen();
-      }
+    if (state_->pendingSplash().kind != JobState::SplashKind::None &&
+        screen_kind_ == ScreenKind::Idle) {
+      showPrizeSplashFromState();
     } else if (!awaiting_doer_) {
       if (cfg_changed && screen_kind_ == ScreenKind::Kid) {
-        rebuildJobList();  // job list for this kid changed (web app)
+        // Defer heavy list rebuild to the next tick so MQTT/NVS can breathe.
+        pending_job_rebuild_ = true;
+        pending_layout_lock_ = true;
+      } else if (cfg_changed && screen_kind_ == ScreenKind::Idle) {
+        // Job-assignment saves shouldn't rebuild the prize carousel; only scores.
+        refreshPrizeScores();
+        pending_layout_lock_ = true;
+      } else if (screen_kind_ == ScreenKind::Idle) {
+        refreshActiveScreen();
+      } else {
+        refreshActiveScreen();
+        if (cfg_changed) {
+          pending_layout_lock_ = true;
+        }
       }
-      refreshActiveScreen();
-      // Config saves used to leave the RGB panel shifted/mirrored — re-pin hard.
-      if (cfg_changed) {
+    }
+  }
+
+  if (pending_job_rebuild_ && screen_kind_ == ScreenKind::Kid && !awaiting_doer_) {
+    pending_job_rebuild_ = false;
+    rebuildJobList();
+    updateKidHeader();
+  }
+
+  if (pending_layout_lock_) {
+    pending_layout_lock_ = false;
+    // Re-pin only the active screen after Save — locking every screen here was
+    // extra work during the freeze window.
+    switch (screen_kind_) {
+      case ScreenKind::Idle:
         lock_screen_layout(screen_idle_);
+        break;
+      case ScreenKind::Home:
         lock_screen_layout(screen_home_);
+        break;
+      case ScreenKind::Kid:
         lock_screen_layout(screen_kid_);
+        if (job_list_) {
+          harden_scroll_list(job_list_);
+        }
+        break;
+      case ScreenKind::NotDone:
         lock_screen_layout(screen_not_done_);
-        lock_screen_layout(screen_doer_);
-        display_board_loop();
-      }
+        break;
     }
   }
 

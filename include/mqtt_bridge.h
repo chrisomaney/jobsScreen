@@ -48,7 +48,7 @@ private:
   };
 
   static constexpr size_t kPendingPayloadMax = 6144;
-  static constexpr uint8_t kPubsPerPump = 2;  // keep each loop() slice short
+  static constexpr uint8_t kPubsPerPump = 1;  // one MQTT message per loop() slice
 
   WiFiClient wifi_;
   PubSubClient client_;
@@ -70,10 +70,12 @@ private:
   PubPhase pub_phase_ = PubPhase::Idle;
   size_t pub_kid_ = 0;
   size_t pub_job_ = 0;
+  uint8_t pub_summary_step_ = 0;  // 0=internet, 1=progress, 2=tally
   bool pub_include_jobs_ = false;
   bool pub_include_catalog_ = false;
   bool pub_include_rules_ = false;
   bool pub_include_net_sched_ = false;
+  bool pub_include_summaries_ = true;
 
   bool pending_config_apply_ = false;
   bool pending_catalog_apply_ = false;
@@ -90,10 +92,14 @@ private:
 
   void ensureConnected();
   void queuePayload(char *dest, size_t *dest_len, bool *flag, const byte *payload, unsigned int length);
-  void processDeferredApplies();
-  void startPublishJob(bool include_jobs, bool include_catalog, bool include_rules, bool include_net_sched);
+  // Returns true if an apply ran this call (caller should skip pump + let UI paint).
+  bool processDeferredApplies();
+  void startPublishJob(bool include_jobs, bool include_catalog, bool include_rules, bool include_net_sched,
+                       bool include_summaries);
   void pumpPublish();
   void publishSummaries();
+  void publishKidInternet(size_t kid);
+  void publishKidProgress(size_t kid);
   String topicJob(size_t kid, size_t job) const;
   String topicInternet(size_t kid) const;
   String topicProgress(size_t kid) const;

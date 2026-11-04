@@ -4,8 +4,6 @@
 #include <NimBLEDevice.h>
 #include <string.h>
 
-#include "display_board.h"
-
 namespace {
 
 // Must match ios BlePanelClient.swift
@@ -20,6 +18,11 @@ NimBLECharacteristic *g_status_char = nullptr;
 String g_rx_buf;
 int g_expect_len = -1;
 String g_payload;
+
+// Defer config apply out of the NimBLE write callback (same freeze class as MQTT).
+bool g_pending_config_set = false;
+String g_pending_config_body;
+bool g_pending_get_config = false;
 
 void notifyJson(const JsonDocument &doc) {
   if (!g_status_char) {
@@ -64,8 +67,7 @@ void handleCompletePayload(const String &json) {
   }
   const char *type = doc["type"] | "";
   if (strcmp(type, "get_config") == 0) {
-    sendConfigState();
-    sendAck(true, "config sent");
+    g_pending_get_config = true;
     return;
   }
   if (strcmp(type, "config_set") == 0) {
@@ -73,21 +75,9 @@ void handleCompletePayload(const String &json) {
       sendAck(false, "missing payload");
       return;
     }
-    String body;
-    serializeJson(doc["payload"], body);
-    const bool ok = g_ble_state && g_ble_state->applyConfigJson(body.c_str(), body.length());
-    if (ok) {
-      if (g_ble_mqtt) {
-        // Config/assignments only — full job-topic blast freezes the RGB panel.
-        g_ble_mqtt->requestPublishConfigAndSummaries();
-      }
-      sendConfigState();
-      sendAck(true, "config applied");
-    } else {
-      // Still echo current config so the app can refresh.
-      sendConfigState();
-      sendAck(true, "no change");
-    }
+    g_pending_config_body = "";
+    serializeJson(doc["payload"], g_pending_config_body);
+    g_pending_config_set = true;
     return;
   }
   sendAck(false, "unknown type");
@@ -96,8 +86,7 @@ void handleCompletePayload(const String &json) {
 void ingestChunk(const uint8_t *data, size_t len) {
   g_rx_buf += String(reinterpret_cast<const char *>(data), len);
 
-  // Keep UI alive while assembling large writes.
-  display_board_loop();
+  // Do not call lv_timer_handler from the NimBLE write path (non-reentrant).
 
   while (true) {
     if (g_expect_len < 0) {
@@ -205,6 +194,34 @@ void BleBridge::loop() {
   if (!started_) {
     return;
   }
+
+  if (g_pending_get_config) {
+    g_pending_get_config = false;
+    sendConfigState();
+    sendAck(true, "config sent");
+  }
+
+  if (g_pending_config_set) {
+    g_pending_config_set = false;
+    const bool ok =
+        g_ble_state &&
+        g_ble_state->applyConfigJson(g_pending_config_body.c_str(), g_pending_config_body.length());
+    g_pending_config_body = "";
+    if (ok) {
+      if (g_ble_mqtt) {
+        // Config/assignments only — full job-topic blast freezes the RGB panel.
+        g_ble_mqtt->requestPublishConfigAndSummaries();
+      }
+      sendConfigState();
+      sendAck(true, "config applied");
+    } else {
+      sendConfigState();
+      sendAck(true, "no change");
+    }
+    // Return after one heavy apply so main can paint before more BLE work.
+    return;
+  }
+
   // NimBLE is callback-driven; nudge advertising periodically.
   const uint32_t now = millis();
   if (now - last_keepalive_ms_ > 20000) {

@@ -50,6 +50,8 @@ public:
   void tickMessage();
 
   uint32_t revision() const { return revision_; }
+  // Flush at most one pending NVS rewrite (rules/job points) per call.
+  bool loopPersist();
 
 private:
   JobState *state_ = nullptr;
@@ -61,6 +63,7 @@ private:
   PanelMessage message_{};
   uint32_t revision_ = 1;
   uint32_t last_tick_ms_ = 0;
+  bool persist_pending_ = false;
 
   void loadNv();
   void saveNv();

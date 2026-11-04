@@ -291,7 +291,7 @@ bool RewardEngine::applyRulesJson(const char *json) {
   if (!doc["rules"].is<JsonArray>()) {
     // Allow points-only updates (no rules array) from admin Expectations/Jobs tabs.
     if (has_jp || has_exp) {
-      saveNv();
+      persist_pending_ = true;
       bump();
       return true;
     }
@@ -345,8 +345,18 @@ bool RewardEngine::applyRulesJson(const char *json) {
 
   memcpy(rules_, next, sizeof(rules_));
   rule_count_ = n;
-  saveNv();
+  persist_pending_ = true;
   bump();
+  return true;
+}
+
+bool RewardEngine::loopPersist() {
+  if (!persist_pending_) {
+    return false;
+  }
+  persist_pending_ = false;
+  saveNv();
+  Serial.println("[rewards] rules/points persisted");
   return true;
 }
 
