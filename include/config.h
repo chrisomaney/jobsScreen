@@ -9,15 +9,23 @@
 struct KidProfile {
   const char *name;   // shown on screen
   const char *slug;   // MQTT path segment
+  uint32_t color;     // prize chips / picker rim
 };
 
 static const KidProfile KIDS[] = {
-  {"Xavier",  "xavier"},
-  {"Presley", "presley"},
-  {"Jax",     "jax"},
-  {"Banx",    "banx"},
-  {"Hazel",   "hazel"},
+  {"Xavier",  "xavier",  0x3B82F6},  // bright blue — prize score chips / picker
+  {"Presley", "presley", 0xEC4899},  // pink
+  {"Jax",     "jax",     0xF59E0B},  // amber
+  {"Banx",    "banx",    0x22C55E},  // green
+  {"Hazel",   "hazel",   0xA855F7},  // violet
 };
+
+struct PrizeDef {
+  char id[24];
+  char name[48];
+  uint16_t cost;
+};
+static const size_t PRIZE_MAX = 16;
 static const size_t KID_COUNT = sizeof(KIDS) / sizeof(KIDS[0]);
 static_assert(KID_COUNT <= 8, "kid masks are 8-bit");
 
@@ -100,10 +108,17 @@ static const int DAILY_RESET_MINUTE = 0;
 // MQTT topic layout (all retained so iOS admin + HA see last state)
 //
 //   kids/{slug}/job/{job_id}/state     payload: "done" | "todo"
-//   kids/{slug}/internet               payload: "on" | "off"  (own list complete)
+//   kids/{slug}/internet               payload: "on" | "off"  (effective unlock)
+//   kids/{slug}/internet/set           admin → "on" | "off" | "auto" (parent override)
+//   kids/common/internet(/set)         shared profile force on/off
 //   kids/{slug}/progress               payload: JSON {"done":n,"total":m,"pct":p}
 //   kids/{slug}/rewards/tally          payload: integer count (help credits)
 //   kids/rewards/event                 payload: JSON doer/owner/job (not retained)
+//   kids/rewards/catalog               retained prize list JSON
+//   kids/rewards/catalog/set           admin → update prizes
+//   kids/rewards/bonus/set             admin → {kid, points}
+//   kids/rewards/claim                 claim event (not retained)
+//   kids/rewards/celebrate             phone/TV splash JSON
 //   kids/panel/status                  payload: "online" / "offline" (LWT)
 //
 // Admin commands (subscribe):
@@ -116,6 +131,16 @@ static const int DAILY_RESET_MINUTE = 0;
 static const char *MQTT_BASE = "kids";
 static const char *MQTT_STATUS_TOPIC = "kids/panel/status";
 static const char *MQTT_REWARDS_EVENT = "kids/rewards/event";
+static const char *MQTT_CATALOG_TOPIC = "kids/rewards/catalog";
+static const char *MQTT_CATALOG_SET = "kids/rewards/catalog/set";
+static const char *MQTT_CLAIM_TOPIC = "kids/rewards/claim";
+static const char *MQTT_BONUS_TOPIC = "kids/rewards/bonus";
+static const char *MQTT_BONUS_SET = "kids/rewards/bonus/set";
+static const char *MQTT_CELEBRATE_TOPIC = "kids/rewards/celebrate";
+static const char *MQTT_RULES_STATE = "kids/rewards/rules/state";
+static const char *MQTT_RULES_SET = "kids/rewards/rules/set";
+static const char *MQTT_PANEL_MESSAGE_SET = "kids/panel/message/set";
+static const size_t REWARD_RULE_MAX = 16;
 // Web app job chooser (see webapp/):
 //   kids/config/state  retained JSON — kids, jobs, who has each job, required flags,
 //                      customSlotsFree, and custom:true on Jobs Chooser–created items
@@ -125,28 +150,53 @@ static const char *MQTT_REWARDS_EVENT = "kids/rewards/event";
 //     {"remove":["custom_0"]}
 static const char *MQTT_CONFIG_STATE = "kids/config/state";
 static const char *MQTT_CONFIG_SET = "kids/config/set";
+// Bedtime / internet-off windows (per kid):
+//   kids/internet/schedules/state  retained JSON array
+//   kids/internet/schedules/set    replace full list
+static const char *MQTT_NET_SCHEDULES_STATE = "kids/internet/schedules/state";
+static const char *MQTT_NET_SCHEDULES_SET = "kids/internet/schedules/set";
+static const size_t INTERNET_SCHEDULE_MAX = 8;
 
-// UI colours (RGB565-friendly hex for LVGL)
-static const uint32_t COL_BG         = 0x1A2332;
-static const uint32_t COL_CARD       = 0x243447;
-static const uint32_t COL_EXPECT     = 0x3B82F6;  // blue — Expectations
-static const uint32_t COL_PAID       = 0xF59E0B;  // amber — Paid jobs
-static const uint32_t COL_DONE       = 0x22C55E;
-static const uint32_t COL_TEXT       = 0xF8FAFC;
-static const uint32_t COL_MUTED      = 0x94A3B8;
-static const uint32_t COL_BTN        = 0x334155;
-static const uint32_t COL_BTN_ACTIVE = 0x16A34A;
+// UI colours — matte black / glass / dark grey / white (minimal dark)
+static const uint32_t COL_BG           = 0x0A0A0A;  // matte black
+static const uint32_t COL_CARD         = 0x1A1A1A;  // frosted glass panel
+static const uint32_t COL_GLASS        = 0x222222;  // slightly lifted glass
+static const uint32_t COL_BORDER       = 0x3A3A3A;  // thin glass edge
+static const uint32_t COL_EXPECT       = 0xA3A3A3;  // soft grey accent — Expectations
+static const uint32_t COL_PAID         = 0xD4D4D4;  // lighter grey — Paid jobs
+static const uint32_t COL_DONE         = 0x22C55E;  // bright green — done / success
+static const uint32_t COL_DONE_ROW     = 0x0F2A1A;  // dark green glass behind done rows
+static const uint32_t COL_TEXT         = 0xFFFFFF;
+static const uint32_t COL_MUTED        = 0x8A8A8A;
+static const uint32_t COL_BTN          = 0x2A2A2A;  // dark grey buttons
+static const uint32_t COL_BTN_PRESSED  = 0x3F3F3F;
+static const uint32_t COL_BTN_ACTIVE   = 0x16A34A;  // bright green Done button when complete
+
+// Prize idle — same dark glass language (no neon)
+static const uint32_t COL_PRIZE_BG = 0x0A0A0A;
+static const uint32_t COL_PRIZE_BG2 = 0x121212;
+static const uint32_t COL_PRIZE_SKY = 0x141414;
+static const uint32_t COL_PRIZE_CARD = 0x1C1C1C;
+static const uint32_t COL_PRIZE_ACCENT = 0x22D3EE;   // bright cyan — banner accents
+static const uint32_t COL_PRIZE_ACCENT2 = 0x67E8F9;
+static const uint32_t COL_PRIZE_COST = 0xFDE047;     // bright gold — credits line
+static const uint32_t COL_PRIZE_WIN = 0x10B981;
+static const uint32_t COL_PRIZE_BONUS = 0xF43F5E;
+static const uint32_t COL_PRIZE_KEEP = 0x3B82F6;
+static const uint32_t COL_PRIZE_LINE = 0x2A2A2A;
+static const uint32_t COL_PRIZE_BTN_BACK = 0x2A2A2A;
 
 // How often to re-publish retained state (ms) — keeps HA fresh after broker restart
 static const uint32_t MQTT_REPUBLISH_MS = 60000;
 
 // Touch debounce for Done buttons (ms, per button)
 static const uint32_t DONE_DEBOUNCE_MS = 400;
+static const uint32_t CLAIM_DEBOUNCE_MS = 600;
 
-// Photo / idle screen — always on; return here after inactivity
+// Idle = prize station; return here after jobs inactivity
 static const uint32_t IDLE_TIMEOUT_MS = 3UL * 60UL * 1000UL;  // 3 minutes
+static const uint32_t CAROUSEL_MS = 5000;
+static const uint32_t SPLASH_MS = 7500;
 
-// The Waveshare 7" backlight is on/off only (CH422G expander, no PWM), so it
-// can't be dimmed in hardware. Instead the idle photo is darkened in software:
-// 100 = original photo, lower = darker. 0 turns the backlight off on idle.
-static const uint8_t IDLE_PHOTO_BRIGHTNESS_PCT = 60;
+// Legacy: photo idle brightness (unused when prize station is idle)
+static const uint8_t IDLE_PHOTO_BRIGHTNESS_PCT = 100;

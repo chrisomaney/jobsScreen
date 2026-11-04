@@ -1,6 +1,9 @@
 #include "job_state.h"
 
+#include "clock_util.h"
+
 #include <ArduinoJson.h>
+#include <cstring>
 
 namespace {
 uint8_t g_mask[JOB_COUNT];
@@ -12,6 +15,13 @@ char g_custom_detail[MAX_CUSTOM_JOBS][JOB_DETAIL_MAX];
 JobCategory g_custom_cat[MAX_CUSTOM_JOBS];
 char g_custom_ids[MAX_CUSTOM_JOBS][12];  // "custom_0" … "custom_7"
 
+// Built-in edits from the web app (empty label = use JOBS[] compile-time default).
+char g_ov_label[BUILTIN_JOB_COUNT][JOB_LABEL_MAX];
+char g_ov_detail[BUILTIN_JOB_COUNT][JOB_DETAIL_MAX];
+bool g_ov_detail_set[BUILTIN_JOB_COUNT];
+JobCategory g_ov_cat[BUILTIN_JOB_COUNT];
+bool g_ov_cat_set[BUILTIN_JOB_COUNT];
+
 size_t customIndex(size_t job) { return job - BUILTIN_JOB_COUNT; }
 
 void initCustomIds() {
@@ -20,6 +30,13 @@ void initCustomIds() {
     g_custom_label[i][0] = '\0';
     g_custom_detail[i][0] = '\0';
     g_custom_cat[i] = JobCategory::Expectation;
+  }
+  for (size_t i = 0; i < BUILTIN_JOB_COUNT; ++i) {
+    g_ov_label[i][0] = '\0';
+    g_ov_detail[i][0] = '\0';
+    g_ov_detail_set[i] = false;
+    g_ov_cat[i] = JOBS[i].category;
+    g_ov_cat_set[i] = false;
   }
 }
 
@@ -114,7 +131,7 @@ bool applyJobFields(size_t j, JsonObjectConst o) {
     if (o["label"].is<const char *>()) {
       char buf[JOB_LABEL_MAX];
       copyTrunc(buf, sizeof(buf), o["label"].as<const char *>());
-      if (strcmp(buf, g_custom_label[ci]) != 0) {
+      if (buf[0] && strcmp(buf, g_custom_label[ci]) != 0) {
         memcpy(g_custom_label[ci], buf, JOB_LABEL_MAX);
         changed = true;
       }
@@ -133,6 +150,37 @@ bool applyJobFields(size_t j, JsonObjectConst o) {
         g_custom_cat[ci] = cat;
         changed = true;
       }
+    }
+    return changed;
+  }
+
+  // Built-in overrides (name / hint / expectation↔job).
+  if (j >= BUILTIN_JOB_COUNT) {
+    return changed;
+  }
+  if (o["label"].is<const char *>()) {
+    char buf[JOB_LABEL_MAX];
+    copyTrunc(buf, sizeof(buf), o["label"].as<const char *>());
+    if (buf[0] && strcmp(buf, g_ov_label[j]) != 0) {
+      memcpy(g_ov_label[j], buf, JOB_LABEL_MAX);
+      changed = true;
+    }
+  }
+  if (o["detail"].is<const char *>()) {
+    char buf[JOB_DETAIL_MAX];
+    copyTrunc(buf, sizeof(buf), o["detail"].as<const char *>());
+    if (!g_ov_detail_set[j] || strcmp(buf, g_ov_detail[j]) != 0) {
+      memcpy(g_ov_detail[j], buf, JOB_DETAIL_MAX);
+      g_ov_detail_set[j] = true;
+      changed = true;
+    }
+  }
+  if (o["cat"].is<const char *>()) {
+    const JobCategory cat = parseCat(o["cat"].as<const char *>());
+    if (!g_ov_cat_set[j] || cat != g_ov_cat[j]) {
+      g_ov_cat[j] = cat;
+      g_ov_cat_set[j] = true;
+      changed = true;
     }
   }
   return changed;
@@ -189,30 +237,39 @@ const char *JobState::jobLabel(size_t job) {
   if (job >= JOB_COUNT) {
     return "";
   }
-  if (!isCustom(job)) {
-    return JOBS[job].label;
+  if (isCustom(job)) {
+    return g_custom_label[customIndex(job)];
   }
-  return g_custom_label[customIndex(job)];
+  if (job < BUILTIN_JOB_COUNT && g_ov_label[job][0]) {
+    return g_ov_label[job];
+  }
+  return JOBS[job].label;
 }
 
 const char *JobState::jobDetail(size_t job) {
   if (job >= JOB_COUNT) {
     return "";
   }
-  if (!isCustom(job)) {
-    return JOBS[job].detail;
+  if (isCustom(job)) {
+    return g_custom_detail[customIndex(job)];
   }
-  return g_custom_detail[customIndex(job)];
+  if (job < BUILTIN_JOB_COUNT && g_ov_detail_set[job]) {
+    return g_ov_detail[job];
+  }
+  return JOBS[job].detail;
 }
 
 JobCategory JobState::jobCategory(size_t job) {
   if (job >= JOB_COUNT) {
     return JobCategory::Expectation;
   }
-  if (!isCustom(job)) {
-    return JOBS[job].category;
+  if (isCustom(job)) {
+    return g_custom_cat[customIndex(job)];
   }
-  return g_custom_cat[customIndex(job)];
+  if (job < BUILTIN_JOB_COUNT && g_ov_cat_set[job]) {
+    return g_ov_cat[job];
+  }
+  return JOBS[job].category;
 }
 
 int JobState::allocCustomSlot() {
@@ -257,6 +314,14 @@ void JobState::begin() {
     loadKid(k);
   }
   loadRewards();
+  prize_prefs_.begin("prizes", false);
+  loadPrizeCatalog();
+  if (prize_count_ == 0) {
+    loadPrizeDefaults();
+    savePrizeCatalog();
+  }
+  loadInternetOverrides();
+  loadInternetSchedules();
   job_day_ = prefs_.getUInt("day", 0);
 }
 
@@ -323,11 +388,9 @@ void JobState::persistConfig() {
       }
     }
     o["required"] = g_required[j];
-    if (isCustom(j)) {
-      o["label"] = jobLabel(j);
-      o["cat"] = jobCategory(j) == JobCategory::Paid ? "paid" : "expectation";
-      o["detail"] = jobDetail(j);
-    }
+    o["label"] = jobLabel(j);
+    o["cat"] = jobCategory(j) == JobCategory::Paid ? "paid" : "expectation";
+    o["detail"] = jobDetail(j);
   }
   String out;
   serializeJson(doc, out);
@@ -588,6 +651,229 @@ bool JobState::internetReady(size_t kid) const {
   return requiredDoneCount(kid) >= requiredTotal(kid);
 }
 
+JobState::InternetOverride JobState::internetOverride(size_t kid) const {
+  if (kid >= KID_COUNT) {
+    return InternetOverride::Auto;
+  }
+  return internet_override_[kid];
+}
+
+void JobState::setInternetOverride(size_t kid, InternetOverride mode) {
+  if (kid >= KID_COUNT) {
+    return;
+  }
+  if (internet_override_[kid] == mode) {
+    return;
+  }
+  internet_override_[kid] = mode;
+  persistInternetOverride(kid);
+  bump();
+}
+
+bool JobState::internetScheduledOff(size_t kid) const {
+  if (kid >= KID_COUNT) {
+    return false;
+  }
+  return scheduled_off_cache_[kid];
+}
+
+bool JobState::internetEffective(size_t kid) const {
+  if (kid >= KID_COUNT) {
+    return false;
+  }
+  const InternetOverride ov = internet_override_[kid];
+  if (ov == InternetOverride::Off) {
+    return false;
+  }
+  // Bedtime schedule wins unless a parent Force On'd for an emergency.
+  if (scheduled_off_cache_[kid] && ov != InternetOverride::On) {
+    return false;
+  }
+  if (ov == InternetOverride::On) {
+    return true;
+  }
+  return internetReady(kid);
+}
+
+void JobState::loadInternetOverrides() {
+  net_prefs_.begin("netov", false);
+  for (size_t k = 0; k < KID_COUNT; ++k) {
+    const uint8_t v = net_prefs_.getUChar((String("o") + k).c_str(), 0);
+    internet_override_[k] =
+        v == 1 ? InternetOverride::On : v == 2 ? InternetOverride::Off : InternetOverride::Auto;
+  }
+}
+
+void JobState::persistInternetOverride(size_t kid) {
+  if (kid >= KID_COUNT) {
+    return;
+  }
+  net_prefs_.putUChar((String("o") + kid).c_str(), static_cast<uint8_t>(internet_override_[kid]));
+}
+
+bool JobState::scheduleActiveNow(const NetSchedule &s, int hour, int minute, int wday) const {
+  if (!s.enabled) {
+    return false;
+  }
+  const int now = hour * 60 + minute;
+  const int off = static_cast<int>(s.off_hour) * 60 + s.off_minute;
+  const int on = static_cast<int>(s.on_hour) * 60 + s.on_minute;
+  if (off == on) {
+    return false;
+  }
+  if (off < on) {
+    // Same-day window (e.g. 13:00–15:00 homework block).
+    return ((s.days >> wday) & 1u) != 0 && now >= off && now < on;
+  }
+  // Overnight (e.g. 20:00 → 07:00): active after off on a selected day, or
+  // before on when yesterday was a selected day.
+  const int yday = (wday + 6) % 7;
+  if (((s.days >> wday) & 1u) != 0 && now >= off) {
+    return true;
+  }
+  if (((s.days >> yday) & 1u) != 0 && now < on) {
+    return true;
+  }
+  return false;
+}
+
+uint8_t JobState::tickInternetSchedules() {
+  int hour = 0;
+  int minute = 0;
+  int wday = 0;
+  if (!clock_local_parts(&hour, &minute, &wday)) {
+    return 0;
+  }
+  uint8_t changed = 0;
+  for (size_t k = 0; k < KID_COUNT; ++k) {
+    bool off = false;
+    for (size_t i = 0; i < net_schedule_count_; ++i) {
+      const NetSchedule &s = net_schedules_[i];
+      if (((s.kids_mask >> k) & 1u) == 0) {
+        continue;
+      }
+      if (scheduleActiveNow(s, hour, minute, wday)) {
+        off = true;
+        break;
+      }
+    }
+    if (off != scheduled_off_cache_[k]) {
+      scheduled_off_cache_[k] = off;
+      changed |= static_cast<uint8_t>(1u << k);
+    }
+  }
+  if (changed) {
+    bump();
+  }
+  return changed;
+}
+
+void JobState::loadInternetSchedules() {
+  net_sched_prefs_.begin("netsched", false);
+  net_schedule_count_ = 0;
+  const String blob = net_sched_prefs_.getString("json", "[]");
+  applyInternetSchedulesJson(blob.c_str());  // fills RAM; avoid re-save loop
+  // applyInternetSchedulesJson saves — for load we only want RAM. Reload without save:
+  // Actually applyInternetSchedulesJson will saveNv which is fine on boot.
+  for (size_t k = 0; k < KID_COUNT; ++k) {
+    scheduled_off_cache_[k] = false;
+  }
+  tickInternetSchedules();
+}
+
+void JobState::saveInternetSchedules() {
+  const String json = internetSchedulesJson();
+  net_sched_prefs_.putString("json", json);
+}
+
+bool JobState::applyInternetSchedulesJson(const char *json) {
+  JsonDocument doc;
+  if (deserializeJson(doc, json)) {
+    return false;
+  }
+  if (!doc.is<JsonArray>()) {
+    return false;
+  }
+  NetSchedule next[INTERNET_SCHEDULE_MAX]{};
+  size_t n = 0;
+  for (JsonObject o : doc.as<JsonArray>()) {
+    if (n >= INTERNET_SCHEDULE_MAX) {
+      break;
+    }
+    NetSchedule &s = next[n];
+    const char *id = o["id"] | "";
+    const char *label = o["label"] | "";
+    if (!id[0]) {
+      snprintf(s.id, sizeof(s.id), "sched_%u", static_cast<unsigned>(n));
+    } else {
+      strncpy(s.id, id, sizeof(s.id) - 1);
+    }
+    strncpy(s.label, label[0] ? label : s.id, sizeof(s.label) - 1);
+    s.days = o["days"] | 0x7F;
+    s.off_hour = constrain(static_cast<int>(o["off_hour"] | 20), 0, 23);
+    s.off_minute = constrain(static_cast<int>(o["off_minute"] | 0), 0, 59);
+    s.on_hour = constrain(static_cast<int>(o["on_hour"] | 7), 0, 23);
+    s.on_minute = constrain(static_cast<int>(o["on_minute"] | 0), 0, 59);
+    s.enabled = o["enabled"].isNull() ? true : o["enabled"].as<bool>();
+    s.kids_mask = 0;
+    if (o["kids"].is<JsonArray>()) {
+      for (JsonVariantConst item : o["kids"].as<JsonArrayConst>()) {
+        const char *slug = item.as<const char *>();
+        if (!slug) {
+          continue;
+        }
+        for (size_t k = 0; k < KID_COUNT; ++k) {
+          if (strcmp(KIDS[k].slug, slug) == 0) {
+            s.kids_mask |= static_cast<uint8_t>(1u << k);
+          }
+        }
+      }
+    } else {
+      s.kids_mask = 0xFF;
+    }
+    if (s.kids_mask == 0) {
+      continue;
+    }
+    ++n;
+  }
+  memcpy(net_schedules_, next, sizeof(net_schedules_));
+  net_schedule_count_ = n;
+  saveInternetSchedules();
+  // Recompute active windows immediately.
+  for (size_t k = 0; k < KID_COUNT; ++k) {
+    scheduled_off_cache_[k] = false;
+  }
+  tickInternetSchedules();
+  bump();
+  return true;
+}
+
+String JobState::internetSchedulesJson() const {
+  JsonDocument doc;
+  JsonArray arr = doc.to<JsonArray>();
+  for (size_t i = 0; i < net_schedule_count_; ++i) {
+    const NetSchedule &s = net_schedules_[i];
+    JsonObject o = arr.add<JsonObject>();
+    o["id"] = s.id;
+    o["label"] = s.label;
+    o["days"] = s.days;
+    o["off_hour"] = s.off_hour;
+    o["off_minute"] = s.off_minute;
+    o["on_hour"] = s.on_hour;
+    o["on_minute"] = s.on_minute;
+    o["enabled"] = s.enabled;
+    JsonArray kids = o["kids"].to<JsonArray>();
+    for (size_t k = 0; k < KID_COUNT; ++k) {
+      if ((s.kids_mask >> k) & 1u) {
+        kids.add(KIDS[k].slug);
+      }
+    }
+  }
+  String out;
+  serializeJson(doc, out);
+  return out;
+}
+
 uint32_t JobState::rewardTally(size_t kid) const {
   if (kid >= KID_COUNT) {
     return 0;
@@ -604,10 +890,199 @@ void JobState::addReward(size_t doer) {
   bump();
 }
 
+void JobState::setRewardTally(size_t kid, uint32_t value) {
+  if (kid >= KID_COUNT) {
+    return;
+  }
+  if (rewards_[kid] == value) {
+    return;
+  }
+  rewards_[kid] = value;
+  persistReward(kid);
+  bump();
+}
+
+void JobState::addBonus(size_t kid, uint32_t points) {
+  if (kid >= KID_COUNT || points == 0) {
+    return;
+  }
+  rewards_[kid] += points;
+  persistReward(kid);
+  char sub[64];
+  snprintf(sub, sizeof(sub), "+%lu points!  Now you have %lu",
+           static_cast<unsigned long>(points),
+           static_cast<unsigned long>(rewards_[kid]));
+  queueSplash(SplashKind::Bonus, kid, "BONUS POINTS!", sub);
+}
+
+void JobState::addPoints(size_t kid, uint32_t points) {
+  if (kid >= KID_COUNT || points == 0) {
+    return;
+  }
+  rewards_[kid] += points;
+  persistReward(kid);
+  bump();
+}
+
+void JobState::adjustPoints(size_t kid, int32_t delta, bool splash) {
+  if (kid >= KID_COUNT || delta == 0) {
+    return;
+  }
+  int64_t next = static_cast<int64_t>(rewards_[kid]) + delta;
+  if (next < 0) {
+    next = 0;
+  }
+  rewards_[kid] = static_cast<uint32_t>(next);
+  persistReward(kid);
+  bump();
+  if (!splash) {
+    return;
+  }
+  char sub[64];
+  if (delta > 0) {
+    snprintf(sub, sizeof(sub), "+%ld points!  Now %lu", static_cast<long>(delta),
+             static_cast<unsigned long>(rewards_[kid]));
+    queueSplash(SplashKind::Bonus, kid, "BONUS POINTS!", sub);
+  } else {
+    snprintf(sub, sizeof(sub), "%ld points  Now %lu", static_cast<long>(delta),
+             static_cast<unsigned long>(rewards_[kid]));
+    queueSplash(SplashKind::KeepGoing, kid, "Points removed", sub);
+  }
+}
+
+int JobState::findJobIndex(const char *id) { return jobIndex(id); }
+
 void JobState::resetRewards() {
   for (size_t k = 0; k < KID_COUNT; ++k) {
     rewards_[k] = 0;
     persistReward(k);
   }
   bump();
+}
+
+void JobState::loadPrizeDefaults() {
+  prize_count_ = 3;
+  memset(prizes_, 0, sizeof(prizes_));
+  strncpy(prizes_[0].id, "ice_cream", sizeof(prizes_[0].id) - 1);
+  strncpy(prizes_[0].name, "Ice cream night", sizeof(prizes_[0].name) - 1);
+  prizes_[0].cost = 5;
+  strncpy(prizes_[1].id, "movie", sizeof(prizes_[1].id) - 1);
+  strncpy(prizes_[1].name, "Pick the movie", sizeof(prizes_[1].name) - 1);
+  prizes_[1].cost = 8;
+  strncpy(prizes_[2].id, "lego", sizeof(prizes_[2].id) - 1);
+  strncpy(prizes_[2].name, "Small Lego set", sizeof(prizes_[2].name) - 1);
+  prizes_[2].cost = 20;
+}
+
+void JobState::loadPrizeCatalog() {
+  prize_count_ = prize_prefs_.getUChar("pc", 0);
+  if (prize_count_ > PRIZE_MAX) {
+    prize_count_ = 0;
+  }
+  memset(prizes_, 0, sizeof(prizes_));
+  for (size_t i = 0; i < prize_count_; ++i) {
+    String id = prize_prefs_.getString((String("pid") + i).c_str(), "");
+    String name = prize_prefs_.getString((String("pn") + i).c_str(), "");
+    prizes_[i].cost = prize_prefs_.getUShort((String("pcost") + i).c_str(), 1);
+    strncpy(prizes_[i].id, id.c_str(), sizeof(prizes_[i].id) - 1);
+    strncpy(prizes_[i].name, name.c_str(), sizeof(prizes_[i].name) - 1);
+  }
+}
+
+void JobState::savePrizeCatalog() {
+  prize_prefs_.putUChar("pc", static_cast<uint8_t>(prize_count_));
+  for (size_t i = 0; i < prize_count_; ++i) {
+    prize_prefs_.putString((String("pid") + i).c_str(), prizes_[i].id);
+    prize_prefs_.putString((String("pn") + i).c_str(), prizes_[i].name);
+    prize_prefs_.putUShort((String("pcost") + i).c_str(), prizes_[i].cost);
+  }
+  bump();
+}
+
+void JobState::queueSplash(SplashKind kind, size_t kid, const char *title, const char *subtitle) {
+  splash_.kind = kind;
+  splash_.kid = kid;
+  strncpy(splash_.title, title ? title : "", sizeof(splash_.title) - 1);
+  splash_.title[sizeof(splash_.title) - 1] = '\0';
+  strncpy(splash_.subtitle, subtitle ? subtitle : "", sizeof(splash_.subtitle) - 1);
+  splash_.subtitle[sizeof(splash_.subtitle) - 1] = '\0';
+  bump();
+}
+
+bool JobState::tryClaimPrize(size_t kid, size_t prize_index, uint32_t *tally_before,
+                             uint32_t *tally_after) {
+  if (kid >= KID_COUNT || prize_index >= prize_count_) {
+    return false;
+  }
+  const uint32_t cost = prizes_[prize_index].cost;
+  const uint32_t before = rewards_[kid];
+  if (before < cost) {
+    char sub[64];
+    snprintf(sub, sizeof(sub), "You need %lu more points",
+             static_cast<unsigned long>(cost - before));
+    queueSplash(SplashKind::KeepGoing, kid, "Keep earning!", sub);
+    return false;
+  }
+  rewards_[kid] = before - cost;
+  persistReward(kid);
+  if (tally_before) {
+    *tally_before = before;
+  }
+  if (tally_after) {
+    *tally_after = rewards_[kid];
+  }
+  char sub[64];
+  snprintf(sub, sizeof(sub), "You got: %s", prizes_[prize_index].name);
+  queueSplash(SplashKind::Winner, kid, "YOU WIN!", sub);
+  return true;
+}
+
+bool JobState::setCatalogFromJson(const char *json) {
+  JsonDocument doc;
+  if (deserializeJson(doc, json)) {
+    return false;
+  }
+  if (!doc.is<JsonArray>()) {
+    return false;
+  }
+  JsonArray arr = doc.as<JsonArray>();
+  size_t n = 0;
+  PrizeDef next[PRIZE_MAX]{};
+  for (JsonObject o : arr) {
+    if (n >= PRIZE_MAX) {
+      break;
+    }
+    const char *id = o["id"] | "";
+    const char *name = o["name"] | "";
+    uint16_t cost = o["cost"] | 1;
+    if (!id[0] || !name[0] || cost == 0) {
+      continue;
+    }
+    strncpy(next[n].id, id, sizeof(next[n].id) - 1);
+    strncpy(next[n].name, name, sizeof(next[n].name) - 1);
+    next[n].cost = cost;
+    ++n;
+  }
+  if (n == 0) {
+    return false;
+  }
+  memcpy(prizes_, next, sizeof(prizes_));
+  prize_count_ = n;
+  savePrizeCatalog();
+  bump();  // refresh prize idle / scores after "Save prizes"
+  return true;
+}
+
+String JobState::catalogToJson() const {
+  JsonDocument doc;
+  JsonArray arr = doc.to<JsonArray>();
+  for (size_t i = 0; i < prize_count_; ++i) {
+    JsonObject o = arr.add<JsonObject>();
+    o["id"] = prizes_[i].id;
+    o["name"] = prizes_[i].name;
+    o["cost"] = prizes_[i].cost;
+  }
+  String out;
+  serializeJson(doc, out);
+  return out;
 }

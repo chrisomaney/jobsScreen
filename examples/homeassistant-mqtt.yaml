@@ -1,4 +1,8 @@
-# Home Assistant — kids jobs panel
+# Kids panel — Home Assistant MQTT monitoring
+# Paste under configuration.yaml (or a package), then reload MQTT entities /
+# restart HA. Requires the Mosquitto add-on already linked to HA.
+#
+# Slugs: xavier, presley, jax, banx, hazel
 #
 # Internet unlock is driven by MikroTik IoT MQTT directly
 # (see examples/mikrotik-kids-control.rsc). HA only shows status + notifies.
@@ -6,117 +10,223 @@
 
 mqtt:
   binary_sensor:
-    - name: "Xavier Internet Ready"
+    - name: "Kids Panel Online"
+      unique_id: kids_panel_online
+      state_topic: "kids/panel/status"
+      payload_on: "online"
+      payload_off: "offline"
+      device_class: connectivity
+      icon: mdi:tablet-dashboard
+
+    - name: "Xavier Internet"
       unique_id: kids_xavier_internet
       state_topic: "kids/xavier/internet"
       payload_on: "on"
       payload_off: "off"
-      device_class: connectivity
-    - name: "Presley Internet Ready"
+      icon: mdi:wifi
+    - name: "Presley Internet"
       unique_id: kids_presley_internet
       state_topic: "kids/presley/internet"
       payload_on: "on"
       payload_off: "off"
-      device_class: connectivity
-    - name: "Jax Internet Ready"
+      icon: mdi:wifi
+    - name: "Jax Internet"
       unique_id: kids_jax_internet
       state_topic: "kids/jax/internet"
       payload_on: "on"
       payload_off: "off"
-      device_class: connectivity
-    - name: "Banx Internet Ready"
+      icon: mdi:wifi
+    - name: "Banx Internet"
       unique_id: kids_banx_internet
       state_topic: "kids/banx/internet"
       payload_on: "on"
       payload_off: "off"
-      device_class: connectivity
-    - name: "Hazel Internet Ready"
+      icon: mdi:wifi
+    - name: "Hazel Internet"
       unique_id: kids_hazel_internet
       state_topic: "kids/hazel/internet"
       payload_on: "on"
       payload_off: "off"
-      device_class: connectivity
+      icon: mdi:wifi
+
+    - name: "Common Internet"
+      unique_id: kids_common_internet
+      state_topic: "kids/common/internet"
+      payload_on: "on"
+      payload_off: "off"
+      icon: mdi:wifi-marker
 
   sensor:
-    - name: "Xavier Rewards Tally"
-      unique_id: kids_xavier_rewards
+    # —— Reward points ——
+    - name: "Xavier Points"
+      unique_id: kids_xavier_points
       state_topic: "kids/xavier/rewards/tally"
-    - name: "Presley Rewards Tally"
-      unique_id: kids_presley_rewards
+      unit_of_measurement: "pts"
+      icon: mdi:star-circle
+    - name: "Presley Points"
+      unique_id: kids_presley_points
       state_topic: "kids/presley/rewards/tally"
-    - name: "Jax Rewards Tally"
-      unique_id: kids_jax_rewards
+      unit_of_measurement: "pts"
+      icon: mdi:star-circle
+    - name: "Jax Points"
+      unique_id: kids_jax_points
       state_topic: "kids/jax/rewards/tally"
-    - name: "Banx Rewards Tally"
-      unique_id: kids_banx_rewards
+      unit_of_measurement: "pts"
+      icon: mdi:star-circle
+    - name: "Banx Points"
+      unique_id: kids_banx_points
       state_topic: "kids/banx/rewards/tally"
-    - name: "Hazel Rewards Tally"
-      unique_id: kids_hazel_rewards
+      unit_of_measurement: "pts"
+      icon: mdi:star-circle
+    - name: "Hazel Points"
+      unique_id: kids_hazel_points
       state_topic: "kids/hazel/rewards/tally"
-    - name: "Xavier Jobs Progress"
+      unit_of_measurement: "pts"
+      icon: mdi:star-circle
+
+    # —— Progress % (+ attributes: done, total, required_*, override, jobs_ready) ——
+    - name: "Xavier Jobs %"
       unique_id: kids_xavier_progress
       state_topic: "kids/xavier/progress"
       value_template: "{{ value_json.pct }}"
       unit_of_measurement: "%"
       json_attributes_topic: "kids/xavier/progress"
+      icon: mdi:progress-check
+    - name: "Presley Jobs %"
+      unique_id: kids_presley_progress
+      state_topic: "kids/presley/progress"
+      value_template: "{{ value_json.pct }}"
+      unit_of_measurement: "%"
+      json_attributes_topic: "kids/presley/progress"
+      icon: mdi:progress-check
+    - name: "Jax Jobs %"
+      unique_id: kids_jax_progress
+      state_topic: "kids/jax/progress"
+      value_template: "{{ value_json.pct }}"
+      unit_of_measurement: "%"
+      json_attributes_topic: "kids/jax/progress"
+      icon: mdi:progress-check
+    - name: "Banx Jobs %"
+      unique_id: kids_banx_progress
+      state_topic: "kids/banx/progress"
+      value_template: "{{ value_json.pct }}"
+      unit_of_measurement: "%"
+      json_attributes_topic: "kids/banx/progress"
+      icon: mdi:progress-check
+    - name: "Hazel Jobs %"
+      unique_id: kids_hazel_progress
+      state_topic: "kids/hazel/progress"
+      value_template: "{{ value_json.pct }}"
+      unit_of_measurement: "%"
+      json_attributes_topic: "kids/hazel/progress"
+      icon: mdi:progress-check
 
+    # —— Override mode (auto / on / off) from progress JSON ——
+    - name: "Xavier Internet Override"
+      unique_id: kids_xavier_override
+      state_topic: "kids/xavier/progress"
+      value_template: "{{ value_json.override | default('auto') }}"
+      icon: mdi:shield-key
+    - name: "Presley Internet Override"
+      unique_id: kids_presley_override
+      state_topic: "kids/presley/progress"
+      value_template: "{{ value_json.override | default('auto') }}"
+      icon: mdi:shield-key
+    - name: "Jax Internet Override"
+      unique_id: kids_jax_override
+      state_topic: "kids/jax/progress"
+      value_template: "{{ value_json.override | default('auto') }}"
+      icon: mdi:shield-key
+    - name: "Banx Internet Override"
+      unique_id: kids_banx_override
+      state_topic: "kids/banx/progress"
+      value_template: "{{ value_json.override | default('auto') }}"
+      icon: mdi:shield-key
+    - name: "Hazel Internet Override"
+      unique_id: kids_hazel_override
+      state_topic: "kids/hazel/progress"
+      value_template: "{{ value_json.override | default('auto') }}"
+      icon: mdi:shield-key
+
+# —— Notify when something interesting happens ——
+# (MikroTik already pause/resumes Kid Control from kids/{slug}/internet —
+# these automations are status/notify only.)
 automation:
-  # Notify when any kid unlocks (MikroTik already resumed via IoT MQTT)
-  - id: kids_internet_unlocked_notify
-    alias: "Kids — internet unlocked (notify)"
-    mode: queued
+  - id: kids_panel_offline
+    alias: "Kids panel went offline"
     trigger:
-      - platform: mqtt
-        topic: kids/+/internet
-        payload: "on"
+      - platform: state
+        entity_id: binary_sensor.kids_panel_online
+        to: "off"
+        for: "00:02:00"
     action:
       - service: notify.notify
         data:
-          title: "Internet unlocked"
-          message: >
-            {{ trigger.topic.split('/')[1] | title }} finished their jobs.
-            MikroTik Kid Control should be resumed.
+          title: "Kids panel"
+          message: "Panel has been offline for 2 minutes"
 
-  - id: kids_internet_locked_notify
-    alias: "Kids — internet locked (notify)"
+  - id: kids_internet_changed
+    alias: "Kids — internet unlock changed"
     mode: queued
     trigger:
-      - platform: mqtt
-        topic: kids/+/internet
-        payload: "off"
+      - platform: state
+        entity_id:
+          - binary_sensor.xavier_internet
+          - binary_sensor.presley_internet
+          - binary_sensor.jax_internet
+          - binary_sensor.banx_internet
+          - binary_sensor.hazel_internet
+          - binary_sensor.common_internet
     action:
       - service: notify.notify
         data:
-          title: "Internet locked"
+          title: "Kids internet"
           message: >
-            {{ trigger.topic.split('/')[1] | title }} still has jobs.
-            MikroTik Kid Control should be paused.
+            {{ trigger.to_state.name }} is now
+            {{ 'ON' if trigger.to_state.state == 'on' else 'OFF' }}
+            (MikroTik Kid Control should already match via IoT MQTT)
 
   - id: kids_rewards_help_event
-    alias: "Kids — reward help from leftover screen"
+    alias: "Kids — someone helped (leftover jobs)"
     trigger:
       - platform: mqtt
         topic: kids/rewards/event
     action:
       - service: notify.persistent_notification
         data:
+          title: "Help credit"
           message: >
             {{ trigger.payload_json.doer_name }} helped with
             {{ trigger.payload_json.owner_name }}'s
             {{ trigger.payload_json.job_label }}
             (tally {{ trigger.payload_json.tally }})
 
-  - id: kids_rewards_celebrate_notify
-    alias: "Kids — prize celebrate notify"
+  - id: kids_prize_claimed
+    alias: "Kids — prize claimed"
+    trigger:
+      - platform: mqtt
+        topic: kids/rewards/claim
+    action:
+      - service: notify.persistent_notification
+        data:
+          title: "Prize claimed"
+          message: >
+            {{ trigger.payload_json.kid }} claimed
+            {{ trigger.payload_json.prize_name }}
+            ({{ trigger.payload_json.cost }} pts → {{ trigger.payload_json.tally_after }})
+
+  - id: kids_celebrate
+    alias: "Kids — celebrate splash"
     trigger:
       - platform: mqtt
         topic: kids/rewards/celebrate
     action:
-      - service: notify.notify
+      - service: notify.persistent_notification
         data:
-          title: "{{ trigger.payload_json.title }}"
+          title: "{{ trigger.payload_json.title | default('Celebrate') }}"
           message: >
-            {{ trigger.payload_json.kid }} — {{ trigger.payload_json.subtitle }}
+            {{ trigger.payload_json.kid }} —
+            {{ trigger.payload_json.subtitle | default(trigger.payload_json.message) }}
 
   # Optional: panel already resets daily at DAILY_RESET_HOUR (default 03:00).
   - id: kids_jobs_morning_reset
@@ -130,3 +240,26 @@ automation:
           topic: kids/cmd/reset_all
           payload: "reset"
           retain: false
+
+# Optional Lovelace card (paste into a dashboard as Manual card YAML):
+#
+# type: entities
+# title: Kids monitor
+# entities:
+#   - binary_sensor.kids_panel_online
+#   - binary_sensor.xavier_internet
+#   - sensor.xavier_jobs
+#   - sensor.xavier_points
+#   - binary_sensor.presley_internet
+#   - sensor.presley_jobs
+#   - sensor.presley_points
+#   - binary_sensor.jax_internet
+#   - sensor.jax_jobs
+#   - sensor.jax_points
+#   - binary_sensor.banx_internet
+#   - sensor.banx_jobs
+#   - sensor.banx_points
+#   - binary_sensor.hazel_internet
+#   - sensor.hazel_jobs
+#   - sensor.hazel_points
+#   - binary_sensor.common_internet

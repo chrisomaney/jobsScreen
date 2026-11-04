@@ -4,17 +4,21 @@
 #include <esp_system.h>
 
 #include "app_secrets.h"
+#include "ble_bridge.h"
 #include "clock_util.h"
 #include "config.h"
 #include "display_board.h"
 #include "job_state.h"
 #include "mqtt_bridge.h"
+#include "reward_engine.h"
 #include "ui.h"
 
 namespace {
 
 JobState g_state;
+RewardEngine g_rewards;
 MqttBridge g_mqtt;
+BleBridge g_ble;
 AppUi g_ui;
 
 const char *resetReasonText(esp_reset_reason_t r) {
@@ -75,7 +79,8 @@ void maintainDailyReset() {
   last_check = millis();
   if (g_state.rollDay(clock_job_day())) {
     Serial.println("[jobs] new day — all jobs reset");
-    g_mqtt.publishAll();
+    // Chunked across loop() — never block the RGB panel with a full blast.
+    g_mqtt.requestPublishAll();
   }
 }
 
@@ -90,6 +95,7 @@ void setup() {
   Serial.printf("[boot] psram %u bytes\n", static_cast<unsigned>(ESP.getPsramSize()));
 
   g_state.begin();
+  g_rewards.begin(&g_state);
 
   if (!display_board_init()) {
     Serial.println("FATAL: display init failed");
@@ -98,17 +104,41 @@ void setup() {
     }
   }
 
-  g_mqtt.begin(&g_state);
-  g_ui.begin(&g_state, &g_mqtt);
+  g_mqtt.begin(&g_state, &g_rewards);
+  g_ui.begin(&g_state, &g_mqtt, &g_rewards);
 
   startWifi();
+  // BLE after Wi-Fi mode is set — better coexistence on ESP32-S3.
+  g_ble.begin(&g_state, &g_mqtt);
   clock_begin_ntp();  // SNTP keeps retrying until Wi-Fi is up
 }
 
 void loop() {
   maintainWifi();
   maintainDailyReset();
+  g_rewards.tickMessage();
+  const uint8_t awarded = g_rewards.tickSchedule();
+  if (awarded) {
+    for (size_t k = 0; k < KID_COUNT; ++k) {
+      if (awarded & (1u << k)) {
+        g_mqtt.publishRewardTally(k);
+      }
+    }
+  }
+  static uint32_t last_net_sched_ms = 0;
+  if (millis() - last_net_sched_ms > 15000) {
+    last_net_sched_ms = millis();
+    const uint8_t flipped = g_state.tickInternetSchedules();
+    if (flipped) {
+      for (size_t k = 0; k < KID_COUNT; ++k) {
+        if (flipped & (1u << k)) {
+          g_mqtt.publishKidSummary(k);
+        }
+      }
+    }
+  }
   g_mqtt.loop();
+  g_ble.loop();
   g_ui.tick();
   display_board_loop();
   delay(5);

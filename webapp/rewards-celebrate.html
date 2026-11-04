@@ -27,6 +27,8 @@
   @keyframes pop { from { transform: scale(.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
   body.winner { background: #4ADE80; }
   body.bonus { background: #FB7185; color: #fff; }
+  body.behaviour { background: #38BDF8; color: #0F172A; }
+  body.penalty { background: #F97316; color: #fff; }
 </style>
 </head>
 <body>
@@ -48,13 +50,20 @@
 const NAMES = {xavier:'Xavier',presley:'Presley',jax:'Jax',banx:'Banx',hazel:'Hazel'};
 let hideTimer, client;
 function show(msg) {
-  document.body.className = msg.type === 'bonus' ? 'bonus' : 'winner';
+  const type = msg.type || 'winner';
+  document.body.className = type;
   document.getElementById('idle').style.display = 'none';
   const splash = document.getElementById('splash');
   splash.classList.add('show');
-  document.getElementById('title').textContent = msg.type === 'bonus' ? 'BONUS!' : 'YOU WIN!';
+  const titles = {
+    bonus: 'BONUS!',
+    winner: 'YOU WIN!',
+    behaviour: msg.title || 'GREAT BEHAVIOUR!',
+    penalty: msg.title || 'BEHAVIOUR NOTE',
+  };
+  document.getElementById('title').textContent = titles[type] || msg.title || 'YOU WIN!';
   document.getElementById('kid').textContent = NAMES[msg.kid] || msg.kid || '';
-  document.getElementById('sub').textContent = msg.subtitle || msg.prize_name || '';
+  document.getElementById('sub').textContent = msg.subtitle || msg.prize_name || msg.message || '';
   clearTimeout(hideTimer);
   hideTimer = setTimeout(() => {
     splash.classList.remove('show');

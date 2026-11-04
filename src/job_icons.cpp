@@ -2235,25 +2235,26 @@ const lv_img_dsc_t *iconForId(const char *id) {
 }
 
 uint32_t badgeColorForId(const char *id) {
-  if (std::strcmp(id, "make_bed") == 0) return 0x60A5FAu;
-  if (std::strcmp(id, "tidy_floor") == 0) return 0x34D399u;
-  if (std::strcmp(id, "washing_in_baskets") == 0) return 0xA78BFAu;
-  if (std::strcmp(id, "towels_on_hooks") == 0) return 0xF472B6u;
-  if (std::strcmp(id, "brush_teeth") == 0) return 0x22D3EEu;
-  if (std::strcmp(id, "get_dressed") == 0) return 0xFB923Cu;
-  if (std::strcmp(id, "socks_on") == 0) return 0xFBBF24u;
-  if (std::strcmp(id, "medication") == 0) return 0xF87171u;
-  if (std::strcmp(id, "loungeroom_tidy") == 0) return 0x818CF8u;
-  if (std::strcmp(id, "table_cleared") == 0) return 0x2DD4BFu;
-  if (std::strcmp(id, "lights_fans_off") == 0) return 0xFDE047u;
-  if (std::strcmp(id, "feed_cat") == 0) return 0xFB923Cu;
-  if (std::strcmp(id, "feed_dog") == 0) return 0xA3E635u;
-  if (std::strcmp(id, "dishes_away") == 0) return 0x38BDF8u;
-  if (std::strcmp(id, "dishes_wash") == 0) return 0x67E8F9u;
-  if (std::strcmp(id, "water_plants") == 0) return 0x4ADE80u;
-  if (std::strcmp(id, "bins_out") == 0) return 0x94A3B8u;
-  if (std::strcmp(id, "bathroom") == 0) return 0xC084FCu;
-  return 0x94A3B8u;
+  // Dark glass greys — keep slight variation so icons stay distinct without neon.
+  if (std::strcmp(id, "make_bed") == 0) return 0x2A2A2Au;
+  if (std::strcmp(id, "tidy_floor") == 0) return 0x333333u;
+  if (std::strcmp(id, "washing_in_baskets") == 0) return 0x2E2E2Eu;
+  if (std::strcmp(id, "towels_on_hooks") == 0) return 0x3A3A3Au;
+  if (std::strcmp(id, "brush_teeth") == 0) return 0x2C2C2Cu;
+  if (std::strcmp(id, "get_dressed") == 0) return 0x363636u;
+  if (std::strcmp(id, "socks_on") == 0) return 0x303030u;
+  if (std::strcmp(id, "medication") == 0) return 0x3F3F3Fu;
+  if (std::strcmp(id, "loungeroom_tidy") == 0) return 0x2A2A2Au;
+  if (std::strcmp(id, "table_cleared") == 0) return 0x343434u;
+  if (std::strcmp(id, "lights_fans_off") == 0) return 0x2F2F2Fu;
+  if (std::strcmp(id, "feed_cat") == 0) return 0x383838u;
+  if (std::strcmp(id, "feed_dog") == 0) return 0x323232u;
+  if (std::strcmp(id, "dishes_away") == 0) return 0x2B2B2Bu;
+  if (std::strcmp(id, "dishes_wash") == 0) return 0x353535u;
+  if (std::strcmp(id, "water_plants") == 0) return 0x2D2D2Du;
+  if (std::strcmp(id, "bins_out") == 0) return 0x3A3A3Au;
+  if (std::strcmp(id, "bathroom") == 0) return 0x313131u;
+  return 0x2A2A2Au;
 }
 
 }  // namespace
@@ -2264,7 +2265,8 @@ lv_obj_t *job_icon_create(lv_obj_t *parent, const char *job_id) {
   lv_obj_set_style_radius(badge, 12, 0);
   lv_obj_set_style_bg_color(badge, lv_color_hex(badgeColorForId(job_id)), 0);
   lv_obj_set_style_bg_opa(badge, LV_OPA_COVER, 0);
-  lv_obj_set_style_border_width(badge, 0, 0);
+  lv_obj_set_style_border_width(badge, 1, 0);
+  lv_obj_set_style_border_color(badge, lv_color_hex(0x3A3A3A), 0);
   lv_obj_set_style_pad_all(badge, 0, 0);
   lv_obj_clear_flag(badge, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_clear_flag(badge, LV_OBJ_FLAG_CLICKABLE);

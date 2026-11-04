@@ -1,14 +1,14 @@
 # Kids Jobs Sign-off (ESP32-S3)
 
-Firmware for the **Waveshare ESP32-S3-Touch-LCD-7** (800×480). Five kids — **Xavier, Presley, Jax, Banx, Hazel** — each have Expectations and Jobs screens. After **7:40am**, a shared **Jobs left to do** screen lets anyone finish leftovers, pick who did it (rewards tally), and only unlocks internet for kids whose **own** list is fully clear.
+Firmware for the **Waveshare ESP32-S3-Touch-LCD-7** (800×480). One panel for **jobs + prize shop**. When nobody’s using it, the neon **Prize Station** runs; a big **JOBS →** button opens the jobs flow. After **7:40am**, **Jobs left to do** lets anyone finish leftovers, pick who did it (reward points), and only unlocks internet for kids whose **own** list is fully clear.
 
-**Second panel:** [rewards-panel/](rewards-panel/) — prize ads, WINNER splash, phone admin + Android TV celebrate page (shares MQTT reward tallies).
+Kids: **Xavier, Presley, Jax, Banx, Hazel**. Phone admin: Jobs Chooser + [rewards-admin.html](webapp/rewards-admin.html). Optional second display firmware still lives under [rewards-panel/](rewards-panel/) if you want a dedicated prize screen.
 
 ## Screens
 
 | Screen | Purpose |
 |--------|---------|
-| **Photo / idle** | Always-on family photo + **Let's Go** (or tap anywhere). Returns here after **3 min** idle |
+| **Prize Station (idle)** | Carousel of prizes, **I WANT THIS**, kid point chips, big **JOBS →**. Returns here after **3 min** idle |
 | **Home** | Five kid cards + **Jobs left to do** (locked until 7:40am) |
 | **Expectations** | That kid’s daily expectations + Done |
 | **Jobs** | That kid’s paid jobs + Done |
@@ -17,20 +17,7 @@ Firmware for the **Waveshare ESP32-S3-Touch-LCD-7** (800×480). Five kids — **
 | **Jobs left to do** | Opens **7:40am**. Outstanding items by kid. Done → **Who did this?** name picker |
 | **Who did this?** | Credits the helper for Rewards; marks the job done on the **owner’s** list. The owner isn’t offered (no self-credit) |
 
-### Family photo on the idle screen
-
-Until you add a photo, a soft generated backdrop is used. To use your own:
-
-```bash
-pip install pillow
-python3 tools/make_idle_photo.py /path/to/family.jpg   # writes data/idle.rgb565 (800×480)
-pio run -t uploadfs                                     # upload LittleFS
-pio run -t upload                                       # firmware if needed
-```
-
-Idle timeout and look: `IDLE_TIMEOUT_MS` and `IDLE_PHOTO_BRIGHTNESS_PCT` in `include/config.h`.
-
-> The Waveshare 7" backlight is **on/off only** (driven through the CH422G IO expander, no PWM), so it can’t be dimmed in hardware. The idle photo is darkened in software instead (`IDLE_PHOTO_BRIGHTNESS_PCT`, default 60). Set it to `0` to switch the backlight fully off when idle (tap the screen to wake).
+Idle timeout: `IDLE_TIMEOUT_MS` in `include/config.h`. **Rewards HQ** (`webapp/rewards-admin.html`): prizes, internet On/Off/Auto override, ± points, add/edit expectations & paid jobs, behaviour, schedules. **Native apps:** iOS [`ios/KidsAdmin`](ios/KidsAdmin) (Xcode) · Android [`android/KidsAdmin`](android/KidsAdmin) (Android Studio) — same Mosquitto WebSocket login.
 
 ### Unlock & rewards rules
 

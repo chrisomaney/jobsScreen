@@ -2,6 +2,7 @@
 
 #include "job_state.h"
 #include "mqtt_bridge.h"
+#include "reward_engine.h"
 #include <lvgl.h>
 
 enum class KidPage : uint8_t {
@@ -11,7 +12,7 @@ enum class KidPage : uint8_t {
 
 class AppUi {
 public:
-  void begin(JobState *state, MqttBridge *mqtt);
+  void begin(JobState *state, MqttBridge *mqtt, RewardEngine *rewards);
   void showIdle();
   void showHome();
   void showKidPage(size_t kid, KidPage page);
@@ -27,15 +28,26 @@ private:
     NotDone,
   };
 
+  // Sub-modes while ScreenKind::Idle (prize station)
+  enum class IdleMode : uint8_t { Ads, Picker, Splash };
+
   JobState *state_ = nullptr;
   MqttBridge *mqtt_ = nullptr;
+  RewardEngine *rewards_ = nullptr;
+  uint32_t seen_rewards_revision_ = 0;
   size_t active_kid_ = 0;
   KidPage active_page_ = KidPage::Expectations;
   ScreenKind screen_kind_ = ScreenKind::Idle;
+  IdleMode idle_mode_ = IdleMode::Ads;
   uint32_t seen_revision_ = 0;
   uint32_t seen_config_revision_ = 0;
   uint32_t last_done_ms_[JOB_COUNT]{};
   uint32_t last_leftover_ms_ = 0;
+  size_t ad_index_ = 0;
+  size_t pending_prize_ = 0;
+  uint32_t last_carousel_ms_ = 0;
+  uint32_t splash_until_ms_ = 0;
+  uint32_t last_claim_ms_ = 0;
 
   bool awaiting_doer_ = false;
   size_t pending_owner_ = 0;
@@ -47,8 +59,29 @@ private:
   lv_obj_t *screen_not_done_ = nullptr;
   lv_obj_t *screen_doer_ = nullptr;
 
-  lv_img_dsc_t idle_img_dsc_{};
-  lv_obj_t *idle_img_ = nullptr;
+  // Prize idle layers
+  lv_obj_t *ad_layer_ = nullptr;
+  lv_obj_t *prize_card_ = nullptr;
+  lv_obj_t *prize_name_ = nullptr;
+  lv_obj_t *prize_cost_ = nullptr;
+  lv_obj_t *want_btn_ = nullptr;
+  lv_obj_t *jobs_btn_ = nullptr;
+  lv_obj_t *score_row_ = nullptr;
+  lv_obj_t *score_chips_[KID_COUNT]{};
+  lv_obj_t *picker_layer_ = nullptr;
+  lv_obj_t *picker_title_ = nullptr;
+  lv_obj_t *picker_sub_ = nullptr;
+  lv_obj_t *kid_btns_[KID_COUNT]{};
+  lv_obj_t *kid_lbls_[KID_COUNT]{};
+  lv_obj_t *splash_layer_ = nullptr;
+  lv_obj_t *splash_title_ = nullptr;
+  lv_obj_t *splash_sub_ = nullptr;
+  lv_obj_t *splash_kid_ = nullptr;
+  lv_obj_t *splash_stars_ = nullptr;
+
+  lv_obj_t *msg_layer_ = nullptr;
+  lv_obj_t *msg_title_ = nullptr;
+  lv_obj_t *msg_body_ = nullptr;
 
   lv_obj_t *status_label_ = nullptr;
   lv_obj_t *clock_label_ = nullptr;
@@ -93,7 +126,20 @@ private:
   void publishKid(size_t kid);
   bool debounce(uint32_t *last_ms);
 
+  void setIdleMode(IdleMode m);
+  void refreshPrizeAd();
+  void refreshPrizeScores();
+  void refreshPrizePicker();
+  void cyclePrizeRim();
+  void showPrizePicker(size_t prize_index);
+  void showPrizeSplashFromState();
+  void buildMessageOverlay();
+  void refreshMessageOverlay();
+
   static void onLetsGo(lv_event_t *e);
+  static void onWantPrize(lv_event_t *e);
+  static void onPrizeKid(lv_event_t *e);
+  static void onPrizeCancel(lv_event_t *e);
   static void onKidCard(lv_event_t *e);
   static void onNotDoneCard(lv_event_t *e);
   static void onBackHome(lv_event_t *e);
