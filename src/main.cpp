@@ -132,12 +132,23 @@ void loop() {
     if (flipped) {
       for (size_t k = 0; k < KID_COUNT; ++k) {
         if (flipped & (1u << k)) {
-          g_mqtt.publishKidSummary(k);
+          // Queue summaries instead of blasting 3×K publishes in this slice.
+          g_mqtt.requestPublishConfigAndSummaries();
+          break;
         }
       }
     }
   }
+
+  // Paint often around heavy MQTT/NVS work so Save-from-app can't starve LVGL.
+  display_board_loop();
   g_mqtt.loop();
+  display_board_loop();
+  // At most one deferred NVS write per loop (config / catalog / schedules / kid / rules).
+  if (!g_state.loopPersist()) {
+    g_rewards.loopPersist();
+  }
+  display_board_loop();
   g_ble.loop();
   g_ui.tick();
   display_board_loop();

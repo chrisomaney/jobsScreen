@@ -293,7 +293,7 @@ bool JobState::clearCustomJob(size_t job) {
   g_required[job] = true;
   for (size_t k = 0; k < KID_COUNT; ++k) {
     done_[k][job] = false;
-    persistKid(k);
+    markPersistKid(k);
   }
   return true;
 }
@@ -435,7 +435,7 @@ bool JobState::applyConfigJson(const char *json, size_t len) {
         }
         for (size_t k = 0; k < KID_COUNT; ++k) {
           done_[k][j] = false;
-          persistKid(k);
+          markPersistKid(k);
         }
         changed = true;
         Serial.printf("[jobs] added %s (%s)\n", g_custom_ids[ci], g_custom_label[ci]);
@@ -464,10 +464,47 @@ bool JobState::applyConfigJson(const char *json, size_t len) {
   if (!changed) {
     return false;
   }
-  persistConfig();
+  // Apply in RAM + bump UI now; flush NVS on a later loop() slice so the
+  // Waveshare RGB panel keeps getting LVGL ticks during Save-from-app.
+  persist_config_pending_ = true;
   ++config_revision_;
   bump();
   return true;
+}
+
+bool JobState::loopPersist() {
+  if (persist_config_pending_) {
+    persist_config_pending_ = false;
+    persistConfig();
+    Serial.println("[jobs] config persisted");
+    return true;
+  }
+  if (persist_catalog_pending_) {
+    persist_catalog_pending_ = false;
+    savePrizeCatalog();
+    Serial.println("[jobs] prize catalog persisted");
+    return true;
+  }
+  if (persist_net_sched_pending_) {
+    persist_net_sched_pending_ = false;
+    saveInternetSchedules();
+    Serial.println("[jobs] internet schedules persisted");
+    return true;
+  }
+  for (size_t k = 0; k < KID_COUNT; ++k) {
+    if (persist_kid_pending_[k]) {
+      persist_kid_pending_[k] = false;
+      persistKid(k);
+      return true;
+    }
+  }
+  return false;
+}
+
+void JobState::markPersistKid(size_t kid) {
+  if (kid < KID_COUNT) {
+    persist_kid_pending_[kid] = true;
+  }
 }
 
 String JobState::configStateJson() const {
@@ -772,9 +809,8 @@ void JobState::loadInternetSchedules() {
   net_sched_prefs_.begin("netsched", false);
   net_schedule_count_ = 0;
   const String blob = net_sched_prefs_.getString("json", "[]");
-  applyInternetSchedulesJson(blob.c_str());  // fills RAM; avoid re-save loop
-  // applyInternetSchedulesJson saves — for load we only want RAM. Reload without save:
-  // Actually applyInternetSchedulesJson will saveNv which is fine on boot.
+  applyInternetSchedulesJson(blob.c_str());  // fills RAM
+  persist_net_sched_pending_ = false;        // already on flash — don't rewrite on boot
   for (size_t k = 0; k < KID_COUNT; ++k) {
     scheduled_off_cache_[k] = false;
   }
@@ -838,7 +874,7 @@ bool JobState::applyInternetSchedulesJson(const char *json) {
   }
   memcpy(net_schedules_, next, sizeof(net_schedules_));
   net_schedule_count_ = n;
-  saveInternetSchedules();
+  persist_net_sched_pending_ = true;
   // Recompute active windows immediately.
   for (size_t k = 0; k < KID_COUNT; ++k) {
     scheduled_off_cache_[k] = false;
@@ -996,7 +1032,6 @@ void JobState::savePrizeCatalog() {
     prize_prefs_.putString((String("pn") + i).c_str(), prizes_[i].name);
     prize_prefs_.putUShort((String("pcost") + i).c_str(), prizes_[i].cost);
   }
-  bump();
 }
 
 void JobState::queueSplash(SplashKind kind, size_t kid, const char *title, const char *subtitle) {
@@ -1068,7 +1103,7 @@ bool JobState::setCatalogFromJson(const char *json) {
   }
   memcpy(prizes_, next, sizeof(prizes_));
   prize_count_ = n;
-  savePrizeCatalog();
+  persist_catalog_pending_ = true;
   bump();  // refresh prize idle / scores after "Save prizes"
   return true;
 }

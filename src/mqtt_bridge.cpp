@@ -281,7 +281,8 @@ void MqttBridge::handleMessage(char *topic, byte *payload, unsigned int length) 
   }
 }
 
-void MqttBridge::processDeferredApplies() {
+bool MqttBridge::processDeferredApplies() {
+  // One heavy apply per loop() so LVGL can paint between Saves.
   if (pending_config_apply_) {
     pending_config_apply_ = false;
     if (state_->applyConfigJson(pending_config_buf_, pending_config_len_)) {
@@ -291,6 +292,7 @@ void MqttBridge::processDeferredApplies() {
     } else {
       pending_publish_config_ = true;  // echo so the web app can confirm
     }
+    return true;
   }
 
   if (pending_catalog_apply_) {
@@ -299,6 +301,7 @@ void MqttBridge::processDeferredApplies() {
       pending_publish_catalog_ = true;
       Serial.println("[mqtt] prize catalog updated");
     }
+    return true;
   }
 
   if (pending_rules_apply_ && rewards_) {
@@ -307,6 +310,7 @@ void MqttBridge::processDeferredApplies() {
       pending_publish_rules_ = true;
       Serial.println("[mqtt] reward rules updated");
     }
+    return true;
   }
 
   if (pending_net_sched_apply_) {
@@ -318,7 +322,9 @@ void MqttBridge::processDeferredApplies() {
     } else {
       pending_publish_net_sched_ = true;  // echo current
     }
+    return true;
   }
+  return false;
 }
 
 void MqttBridge::publishJob(size_t kid, size_t job) {
@@ -329,18 +335,23 @@ void MqttBridge::publishJob(size_t kid, size_t job) {
   client_.publish(topicJob(kid, job).c_str(), val, true);
 }
 
-void MqttBridge::publishKidSummary(size_t kid) {
+void MqttBridge::publishKidInternet(size_t kid) {
   if (!client_.connected() || kid >= KID_COUNT) {
     return;
   }
-
   const bool ready = state_->internetEffective(kid);
   client_.publish(topicInternet(kid).c_str(), ready ? "on" : "off", true);
+}
 
+void MqttBridge::publishKidProgress(size_t kid) {
+  if (!client_.connected() || kid >= KID_COUNT) {
+    return;
+  }
   JsonDocument doc;
   const size_t done = state_->doneCount(kid);
   const size_t req_done = state_->requiredDoneCount(kid);
   const size_t req_total = state_->requiredTotal(kid);
+  const bool ready = state_->internetEffective(kid);
   doc["done"] = done;
   doc["total"] = state_->assignedCount(kid);
   doc["required_done"] = req_done;
@@ -359,6 +370,11 @@ void MqttBridge::publishKidSummary(size_t kid) {
   String json;
   serializeJson(doc, json);
   client_.publish(topicProgress(kid).c_str(), json.c_str(), true);
+}
+
+void MqttBridge::publishKidSummary(size_t kid) {
+  publishKidInternet(kid);
+  publishKidProgress(kid);
   publishRewardTally(kid);
 }
 
@@ -524,16 +540,19 @@ void MqttBridge::publishSummaries() {
 }
 
 void MqttBridge::startPublishJob(bool include_jobs, bool include_catalog, bool include_rules,
-                                 bool include_net_sched) {
+                                 bool include_net_sched, bool include_summaries) {
   pub_include_jobs_ = include_jobs;
   pub_include_catalog_ = include_catalog;
   pub_include_rules_ = include_rules;
   pub_include_net_sched_ = include_net_sched;
+  pub_include_summaries_ = include_summaries;
   pub_kid_ = 0;
   pub_job_ = 0;
+  pub_summary_step_ = 0;
   pub_phase_ = PubPhase::Config;
-  Serial.printf("[mqtt] publish start (jobs=%d catalog=%d rules=%d sched=%d)\n", include_jobs ? 1 : 0,
-                include_catalog ? 1 : 0, include_rules ? 1 : 0, include_net_sched ? 1 : 0);
+  Serial.printf("[mqtt] publish start (jobs=%d catalog=%d rules=%d sched=%d sums=%d)\n",
+                include_jobs ? 1 : 0, include_catalog ? 1 : 0, include_rules ? 1 : 0,
+                include_net_sched ? 1 : 0, include_summaries ? 1 : 0);
 }
 
 void MqttBridge::pumpPublish() {
@@ -551,7 +570,7 @@ void MqttBridge::pumpPublish() {
       pending_publish_rules_ = false;
       pending_publish_net_sched_ = false;
       pending_publish_summaries_ = false;
-      startPublishJob(true, true, true, true);
+      startPublishJob(true, true, true, true, true);
     } else if (pending_publish_config_ || pending_publish_catalog_ || pending_publish_rules_ ||
                pending_publish_net_sched_ || pending_publish_summaries_) {
       const bool cfg = pending_publish_config_;
@@ -569,8 +588,10 @@ void MqttBridge::pumpPublish() {
       pub_include_catalog_ = cat;
       pub_include_rules_ = rules;
       pub_include_net_sched_ = sched;
+      pub_include_summaries_ = sums;
       pub_kid_ = 0;
       pub_job_ = 0;
+      pub_summary_step_ = 0;
       if (cfg) {
         pub_phase_ = PubPhase::Config;
       } else if (cat) {
@@ -587,6 +608,21 @@ void MqttBridge::pumpPublish() {
     }
   }
 
+  auto afterMeta = [this]() {
+    if (pub_include_jobs_) {
+      pub_phase_ = PubPhase::Jobs;
+      pub_kid_ = 0;
+      pub_job_ = 0;
+    } else if (pub_include_summaries_) {
+      pub_phase_ = PubPhase::Summaries;
+      pub_kid_ = 0;
+      pub_summary_step_ = 0;
+    } else {
+      pub_phase_ = PubPhase::Idle;
+      Serial.println("[mqtt] publish done");
+    }
+  };
+
   uint8_t budget = kPubsPerPump;
   while (budget > 0 && pub_phase_ != PubPhase::Idle) {
     switch (pub_phase_) {
@@ -599,13 +635,8 @@ void MqttBridge::pumpPublish() {
           pub_phase_ = PubPhase::Rules;
         } else if (pub_include_net_sched_) {
           pub_phase_ = PubPhase::NetSched;
-        } else if (pub_include_jobs_) {
-          pub_phase_ = PubPhase::Jobs;
-          pub_kid_ = 0;
-          pub_job_ = 0;
         } else {
-          pub_phase_ = PubPhase::Summaries;
-          pub_kid_ = 0;
+          afterMeta();
         }
         break;
 
@@ -616,13 +647,8 @@ void MqttBridge::pumpPublish() {
           pub_phase_ = PubPhase::Rules;
         } else if (pub_include_net_sched_) {
           pub_phase_ = PubPhase::NetSched;
-        } else if (pub_include_jobs_) {
-          pub_phase_ = PubPhase::Jobs;
-          pub_kid_ = 0;
-          pub_job_ = 0;
         } else {
-          pub_phase_ = PubPhase::Summaries;
-          pub_kid_ = 0;
+          afterMeta();
         }
         break;
 
@@ -631,27 +657,15 @@ void MqttBridge::pumpPublish() {
         --budget;
         if (pub_include_net_sched_) {
           pub_phase_ = PubPhase::NetSched;
-        } else if (pub_include_jobs_) {
-          pub_phase_ = PubPhase::Jobs;
-          pub_kid_ = 0;
-          pub_job_ = 0;
         } else {
-          pub_phase_ = PubPhase::Summaries;
-          pub_kid_ = 0;
+          afterMeta();
         }
         break;
 
       case PubPhase::NetSched:
         publishInternetSchedules();
         --budget;
-        if (pub_include_jobs_) {
-          pub_phase_ = PubPhase::Jobs;
-          pub_kid_ = 0;
-          pub_job_ = 0;
-        } else {
-          pub_phase_ = PubPhase::Summaries;
-          pub_kid_ = 0;
-        }
+        afterMeta();
         break;
 
       case PubPhase::Jobs: {
@@ -669,8 +683,14 @@ void MqttBridge::pumpPublish() {
             pub_job_ = 0;
             ++pub_kid_;
             if (pub_kid_ >= KID_COUNT) {
-              pub_phase_ = PubPhase::Summaries;
-              pub_kid_ = 0;
+              if (pub_include_summaries_) {
+                pub_phase_ = PubPhase::Summaries;
+                pub_kid_ = 0;
+                pub_summary_step_ = 0;
+              } else {
+                pub_phase_ = PubPhase::Idle;
+                Serial.println("[mqtt] publish done");
+              }
               break;
             }
           }
@@ -679,12 +699,23 @@ void MqttBridge::pumpPublish() {
       }
 
       case PubPhase::Summaries:
-        publishKidSummary(pub_kid_);
+        // One MQTT message per slice (internet / progress / tally).
+        if (pub_summary_step_ == 0) {
+          publishKidInternet(pub_kid_);
+        } else if (pub_summary_step_ == 1) {
+          publishKidProgress(pub_kid_);
+        } else {
+          publishRewardTally(pub_kid_);
+        }
         --budget;
-        ++pub_kid_;
-        if (pub_kid_ >= KID_COUNT) {
-          pub_phase_ = PubPhase::Idle;
-          Serial.println("[mqtt] publish done");
+        ++pub_summary_step_;
+        if (pub_summary_step_ >= 3) {
+          pub_summary_step_ = 0;
+          ++pub_kid_;
+          if (pub_kid_ >= KID_COUNT) {
+            pub_phase_ = PubPhase::Idle;
+            Serial.println("[mqtt] publish done");
+          }
         }
         break;
 
@@ -697,10 +728,6 @@ void MqttBridge::pumpPublish() {
 void MqttBridge::publishAll() {
   // Compatibility for callers that still want a "full sync" — always chunked.
   pending_publish_all_ = true;
-  // Kick the first slice immediately so reconnect doesn't wait an extra loop.
-  if (pub_phase_ == PubPhase::Idle) {
-    pumpPublish();
-  }
 }
 
 void MqttBridge::loop() {
@@ -713,7 +740,10 @@ void MqttBridge::loop() {
   }
 
   client_.loop();
-  processDeferredApplies();
+  // Never apply + publish in the same slice — RGB panel needs a paint between.
+  if (processDeferredApplies()) {
+    return;
+  }
   pumpPublish();
 
   const uint32_t now = millis();

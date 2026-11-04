@@ -111,6 +111,10 @@ public:
 
   uint32_t revision() const { return revision_; }
 
+  // Flush at most one pending NVS write per call so Save-from-app doesn't stall
+  // the RGB panel. Returns true if a write was performed.
+  bool loopPersist();
+
 private:
   bool done_[KID_COUNT][JOB_COUNT]{};
   uint32_t rewards_[KID_COUNT]{};
@@ -133,10 +137,15 @@ private:
   Splash splash_{};
   uint32_t revision_ = 1;
   uint32_t config_revision_ = 1;
+  bool persist_config_pending_ = false;
+  bool persist_catalog_pending_ = false;
+  bool persist_net_sched_pending_ = false;
+  bool persist_kid_pending_[KID_COUNT]{};
   void persistConfig();
   void loadConfig();
   void bump() { ++revision_; }
   void persistKid(size_t kid);
+  void markPersistKid(size_t kid);
   void loadKid(size_t kid);
   void persistReward(size_t kid);
   void loadRewards();
