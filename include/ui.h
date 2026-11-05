@@ -41,8 +41,6 @@ private:
   IdleMode idle_mode_ = IdleMode::Ads;
   uint32_t seen_revision_ = 0;
   uint32_t seen_config_revision_ = 0;
-  bool pending_job_rebuild_ = false;
-  bool pending_layout_lock_ = false;
   uint32_t last_done_ms_[JOB_COUNT]{};
   uint32_t last_leftover_ms_ = 0;
   size_t ad_index_ = 0;

@@ -339,7 +339,24 @@ uint8_t JobState::assignedMask(size_t job) {
 }
 
 void JobState::loadConfig() {
-  const String saved = prefs_.getString("cfg", "");
+  // Prefer blob storage — putString is capped (~4000B) and silently failed once
+  // the job catalogue grew past that, so Saves looked fine then vanished on reboot.
+  String saved;
+  const size_t blob_len = prefs_.getBytesLength("cfgb");
+  if (blob_len > 0) {
+    saved.reserve(blob_len + 1);
+    char *buf = static_cast<char *>(malloc(blob_len + 1));
+    if (!buf) {
+      Serial.println("[jobs] config blob alloc failed");
+      return;
+    }
+    const size_t got = prefs_.getBytes("cfgb", buf, blob_len);
+    buf[got < blob_len ? got : blob_len] = '\0';
+    saved = buf;
+    free(buf);
+  } else {
+    saved = prefs_.getString("cfg", "");  // migrate legacy string key
+  }
   if (saved.isEmpty()) {
     return;
   }
@@ -394,7 +411,16 @@ void JobState::persistConfig() {
   }
   String out;
   serializeJson(doc, out);
-  prefs_.putString("cfg", out);
+  const size_t n = out.length();
+  const size_t written = prefs_.putBytes("cfgb", out.c_str(), n);
+  if (written != n) {
+    Serial.printf("[jobs] CRITICAL: config persist failed (%u/%u bytes) — NVS full?\n",
+                  static_cast<unsigned>(written), static_cast<unsigned>(n));
+  } else {
+    Serial.printf("[jobs] config persisted (%u bytes)\n", static_cast<unsigned>(n));
+    // Drop legacy string key so we don't keep a truncated copy around.
+    prefs_.remove("cfg");
+  }
 }
 
 bool JobState::applyConfigJson(const char *json, size_t len) {
@@ -464,21 +490,24 @@ bool JobState::applyConfigJson(const char *json, size_t len) {
   if (!changed) {
     return false;
   }
-  // Apply in RAM + bump UI now; flush NVS on a later loop() slice so the
-  // Waveshare RGB panel keeps getting LVGL ticks during Save-from-app.
-  persist_config_pending_ = true;
+  // MUST flush to NVS before returning — deferred persist was lost whenever the
+  // RGB panel froze and the user power-cycled (Save looked OK, then vanished).
+  persistConfig();
+  for (size_t k = 0; k < KID_COUNT; ++k) {
+    if (persist_kid_pending_[k]) {
+      persist_kid_pending_[k] = false;
+      persistKid(k);
+    }
+  }
+  persist_config_pending_ = false;
   ++config_revision_;
   bump();
   return true;
 }
 
 bool JobState::loopPersist() {
-  if (persist_config_pending_) {
-    persist_config_pending_ = false;
-    persistConfig();
-    Serial.println("[jobs] config persisted");
-    return true;
-  }
+  // Config is persisted synchronously in applyConfigJson. Remaining deferred
+  // writes are smaller (catalog / schedules / kid blobs).
   if (persist_catalog_pending_) {
     persist_catalog_pending_ = false;
     savePrizeCatalog();
@@ -874,7 +903,8 @@ bool JobState::applyInternetSchedulesJson(const char *json) {
   }
   memcpy(net_schedules_, next, sizeof(net_schedules_));
   net_schedule_count_ = n;
-  persist_net_sched_pending_ = true;
+  persist_net_sched_pending_ = false;
+  saveInternetSchedules();  // sync — must survive power-cycle after Save
   // Recompute active windows immediately.
   for (size_t k = 0; k < KID_COUNT; ++k) {
     scheduled_off_cache_[k] = false;
@@ -1103,7 +1133,8 @@ bool JobState::setCatalogFromJson(const char *json) {
   }
   memcpy(prizes_, next, sizeof(prizes_));
   prize_count_ = n;
-  persist_catalog_pending_ = true;
+  persist_catalog_pending_ = false;
+  savePrizeCatalog();  // sync — must survive power-cycle after Save
   bump();  // refresh prize idle / scores after "Save prizes"
   return true;
 }
