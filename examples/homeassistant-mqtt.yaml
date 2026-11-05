@@ -2,7 +2,7 @@
 # Paste under configuration.yaml (or a package), then reload MQTT entities /
 # restart HA. Requires the Mosquitto add-on already linked to HA.
 #
-# Slugs: xavier, presley, jax, banx, hazel, chris, stacy
+# Slugs: xavier, presley, jax, banx, hazel, woomba, wilma
 
 mqtt:
   binary_sensor:
@@ -44,15 +44,15 @@ mqtt:
       payload_on: "on"
       payload_off: "off"
       icon: mdi:wifi
-    - name: "Chris Internet"
+    - name: "Woomba Internet"
       unique_id: kids_chris_internet
-      state_topic: "kids/chris/internet"
+      state_topic: "kids/woomba/internet"
       payload_on: "on"
       payload_off: "off"
       icon: mdi:wifi
-    - name: "Stacy Internet"
+    - name: "Wilma Internet"
       unique_id: kids_stacy_internet
-      state_topic: "kids/stacy/internet"
+      state_topic: "kids/wilma/internet"
       payload_on: "on"
       payload_off: "off"
       icon: mdi:wifi
@@ -91,14 +91,14 @@ mqtt:
       state_topic: "kids/hazel/rewards/tally"
       unit_of_measurement: "pts"
       icon: mdi:star-circle
-    - name: "Chris Points"
+    - name: "Woomba Points"
       unique_id: kids_chris_points
-      state_topic: "kids/chris/rewards/tally"
+      state_topic: "kids/woomba/rewards/tally"
       unit_of_measurement: "pts"
       icon: mdi:star-circle
-    - name: "Stacy Points"
+    - name: "Wilma Points"
       unique_id: kids_stacy_points
-      state_topic: "kids/stacy/rewards/tally"
+      state_topic: "kids/wilma/rewards/tally"
       unit_of_measurement: "pts"
       icon: mdi:star-circle
 
@@ -138,19 +138,19 @@ mqtt:
       unit_of_measurement: "%"
       json_attributes_topic: "kids/hazel/progress"
       icon: mdi:progress-check
-    - name: "Chris Jobs %"
+    - name: "Woomba Jobs %"
       unique_id: kids_chris_progress
-      state_topic: "kids/chris/progress"
+      state_topic: "kids/woomba/progress"
       value_template: "{{ value_json.pct }}"
       unit_of_measurement: "%"
-      json_attributes_topic: "kids/chris/progress"
+      json_attributes_topic: "kids/woomba/progress"
       icon: mdi:progress-check
-    - name: "Stacy Jobs %"
+    - name: "Wilma Jobs %"
       unique_id: kids_stacy_progress
-      state_topic: "kids/stacy/progress"
+      state_topic: "kids/wilma/progress"
       value_template: "{{ value_json.pct }}"
       unit_of_measurement: "%"
-      json_attributes_topic: "kids/stacy/progress"
+      json_attributes_topic: "kids/wilma/progress"
       icon: mdi:progress-check
 
     # —— Override mode (auto / on / off) from progress JSON ——
@@ -179,14 +179,14 @@ mqtt:
       state_topic: "kids/hazel/progress"
       value_template: "{{ value_json.override | default('auto') }}"
       icon: mdi:shield-key
-    - name: "Chris Internet Override"
+    - name: "Woomba Internet Override"
       unique_id: kids_chris_override
-      state_topic: "kids/chris/progress"
+      state_topic: "kids/woomba/progress"
       value_template: "{{ value_json.override | default('auto') }}"
       icon: mdi:shield-key
-    - name: "Stacy Internet Override"
+    - name: "Wilma Internet Override"
       unique_id: kids_stacy_override
-      state_topic: "kids/stacy/progress"
+      state_topic: "kids/wilma/progress"
       value_template: "{{ value_json.override | default('auto') }}"
       icon: mdi:shield-key
 
