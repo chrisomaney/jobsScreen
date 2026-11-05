@@ -10,6 +10,7 @@
 #include "display_board.h"
 #include "job_state.h"
 #include "mqtt_bridge.h"
+#include "ota_bridge.h"
 #include "reward_engine.h"
 #include "ui.h"
 
@@ -115,6 +116,15 @@ void setup() {
 
 void loop() {
   maintainWifi();
+  // Service OTA before heavy work so uploads stay responsive over Wi‑Fi/WAN.
+  ota_bridge_loop();
+  if (ota_bridge_active()) {
+    // Keep the RGB panel alive with a light paint; skip MQTT/BLE/UI churn.
+    display_board_loop();
+    delay(5);
+    return;
+  }
+
   maintainDailyReset();
   g_rewards.tickMessage();
   const uint8_t awarded = g_rewards.tickSchedule();

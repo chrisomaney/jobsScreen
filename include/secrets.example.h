@@ -13,3 +13,8 @@
 #define MQTT_USER     ""               // leave empty if no auth
 #define MQTT_PASSWORD ""
 #define MQTT_CLIENT_ID "kids-jobs-panel"
+
+// Network firmware updates (ArduinoOTA). Required for Cloud Agent / laptop
+// pushes after the one-time USB bootstrap flash.
+#define OTA_HOSTNAME "kids-jobs-panel"
+#define OTA_PASSWORD "change-me-to-a-long-random-string"

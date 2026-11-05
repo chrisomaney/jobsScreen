@@ -56,6 +56,23 @@ pio run -t upload
 pio device monitor
 ```
 
+### OTA updates (no more hauling the panel downstairs)
+
+The 16MB partition table already has dual app slots. After **one USB flash** of a build that includes ArduinoOTA:
+
+1. Put a strong `OTA_PASSWORD` (and optional `OTA_HOSTNAME`) in `include/secrets.h`.
+2. Confirm serial shows `[ota] listening as kids-jobs-panel.local …`.
+3. From the same LAN (or via a temporary WAN port-forward to the panel’s **TCP 3232**):
+
+```bash
+export OTA_HOST=192.168.1.50          # LAN IP, or your public IP when forwarding
+export OTA_PORT=3232                  # or the external WAN port you opened
+export OTA_PASSWORD='your-ota-password'
+pio run -e waveshare-esp32s3-touch-lcd-7-ota -t upload
+```
+
+Close the WAN forward when you’re done. Never leave OTA open to the internet without a password.
+
 If you see `fatal error: Network.h: No such file or directory`, pull the latest `main` (the include paths in `platformio.ini` are now relative, so project folders with spaces or Windows paths work), then run `pio run -t clean` and build again.
 
 If you see `lv_conf.h: No such file` on Windows, pull the latest from this branch (LV_CONF_PATH was removed — it breaks on Windows paths) and run `pio run -t clean` then `pio run`.
