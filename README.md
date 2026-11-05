@@ -52,13 +52,15 @@ cp include/secrets.example.h include/secrets.h
 5. Build & flash:
 
 ```bash
-pio run -t upload
-pio device monitor
+pio run -e ws7 -t upload
+pio run -e ws7 -t monitor
 ```
 
-If you see `fatal error: Network.h: No such file or directory`, pull the latest `main` (the include paths in `platformio.ini` are now relative, so project folders with spaces or Windows paths work), then run `pio run -t clean` and build again.
+Use `-e ws7` (short env). Prefer `pio run -e ws7 -t monitor` over bare `pio device monitor` — this project disables DTR/RTS so opening the monitor does not reset the ESP32-S3 USB-CDC port (which looks like “Closed serial port COMxx due to disconnection”).
 
-If you see `lv_conf.h: No such file` on Windows, pull the latest from this branch (LV_CONF_PATH was removed — it breaks on Windows paths) and run `pio run -t clean` then `pio run`.
+If you see `fatal error: Network.h: No such file or directory`, pull the latest `main` (the include paths in `platformio.ini` are now relative, so project folders with spaces or Windows paths work), then run `pio run -e ws7 -t clean` and build again.
+
+If you see `lv_conf.h: No such file` on Windows, pull the latest (LV_CONF_PATH was removed — it breaks on Windows paths) and run `pio run -e ws7 -t clean` then `pio run -e ws7`.
 
 `lib/Network` is a vendored copy of the Arduino-ESP32 3.0.7 Network library (link helper for `WiFi` → `Network.h`). If it’s ever missing:
 
@@ -68,9 +70,15 @@ cp -a ~/.platformio/packages/framework-arduinoespressif32/libraries/Network/. li
 # ensure library.properties name=Network
 ```
 
+### Boot log notes
+
+**GT911 `Unable to initialize the I2C address`:** expected and harmless on this board. Touch reset is on the CH422G expander (not an ESP32 GPIO), so the GT911 driver skips its own address-select dance and logs a warning. If you then see `TouchPad_ID:0x39,0x31,0x31` and `Board begin success`, touch is fine.
+
+**COM port disconnects right after board begin:** usually the native USB-CDC port resetting when DTR/RTS is pulsed. Use `pio run -e ws7 -t monitor` (DTR/RTS off), or the board’s **UART** USB-C port for a stable log. Waveshare recommends UART for download and serial print.
+
 ### Debugging crashes
 
-On boot the panel prints `[boot] reset reason: ...` (e.g. `PANIC`, `interrupt watchdog`, `brownout`). The native USB port disconnects when the chip resets, so the crash backtrace is often lost there — use the board’s **UART** USB-C port with `pio device monitor` to see the full panic output (decoded by `esp32_exception_decoder`). Use a good 5 V / 2 A supply; brownouts look like random reboots.
+On boot the panel prints `[boot] reset reason: ...` (e.g. `PANIC`, `interrupt watchdog`, `brownout`). The native USB port disconnects when the chip resets, so the crash backtrace is often lost there — use the board’s **UART** USB-C port with `pio run -e ws7 -t monitor` to see the full panic output (decoded by `esp32_exception_decoder`). Use a good 5 V / 2 A supply; brownouts look like random reboots.
 
 ## MQTT topics
 
