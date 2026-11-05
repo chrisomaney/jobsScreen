@@ -287,10 +287,11 @@ bool MqttBridge::processDeferredApplies() {
     pending_config_apply_ = false;
     if (state_->applyConfigJson(pending_config_buf_, pending_config_len_)) {
       Serial.println("[mqtt] job config updated from web app");
-      // Assignments change counts/internet — do NOT blast every job topic.
-      requestPublishConfigAndSummaries();
+      // Echo config/state immediately so the app confirms Save. Summaries later.
+      publishConfig();
+      pending_publish_summaries_ = true;
     } else {
-      pending_publish_config_ = true;  // echo so the web app can confirm
+      publishConfig();  // still echo so the web app can clear its "saving" spinner
     }
     return true;
   }
@@ -298,7 +299,7 @@ bool MqttBridge::processDeferredApplies() {
   if (pending_catalog_apply_) {
     pending_catalog_apply_ = false;
     if (state_->setCatalogFromJson(pending_catalog_buf_)) {
-      pending_publish_catalog_ = true;
+      publishCatalog();  // immediate confirm
       Serial.println("[mqtt] prize catalog updated");
     }
     return true;
@@ -307,7 +308,7 @@ bool MqttBridge::processDeferredApplies() {
   if (pending_rules_apply_ && rewards_) {
     pending_rules_apply_ = false;
     if (rewards_->applyRulesJson(pending_rules_buf_)) {
-      pending_publish_rules_ = true;
+      publishRules();  // immediate confirm
       Serial.println("[mqtt] reward rules updated");
     }
     return true;
@@ -316,11 +317,11 @@ bool MqttBridge::processDeferredApplies() {
   if (pending_net_sched_apply_) {
     pending_net_sched_apply_ = false;
     if (state_->applyInternetSchedulesJson(pending_net_sched_buf_)) {
-      pending_publish_net_sched_ = true;
+      publishInternetSchedules();  // immediate confirm
       pending_publish_summaries_ = true;  // internet may flip
       Serial.println("[mqtt] internet schedules updated");
     } else {
-      pending_publish_net_sched_ = true;  // echo current
+      publishInternetSchedules();
     }
     return true;
   }

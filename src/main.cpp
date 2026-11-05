@@ -140,15 +140,11 @@ void loop() {
     }
   }
 
-  // Paint often around heavy MQTT/NVS work so Save-from-app can't starve LVGL.
-  display_board_loop();
   g_mqtt.loop();
-  display_board_loop();
-  // At most one deferred NVS write per loop (config / catalog / schedules / kid / rules).
+  // Leftover deferred NVS (usually empty — config/rules now persist synchronously).
   if (!g_state.loopPersist()) {
     g_rewards.loopPersist();
   }
-  display_board_loop();
   g_ble.loop();
   g_ui.tick();
   display_board_loop();

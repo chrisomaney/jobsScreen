@@ -1166,51 +1166,25 @@ void AppUi::tick() {
         screen_kind_ == ScreenKind::Idle) {
       showPrizeSplashFromState();
     } else if (!awaiting_doer_) {
-      if (cfg_changed && screen_kind_ == ScreenKind::Kid) {
-        // Defer heavy list rebuild to the next tick so MQTT/NVS can breathe.
-        pending_job_rebuild_ = true;
-        pending_layout_lock_ = true;
-      } else if (cfg_changed && screen_kind_ == ScreenKind::Idle) {
-        // Job-assignment saves shouldn't rebuild the prize carousel; only scores.
-        refreshPrizeScores();
-        pending_layout_lock_ = true;
+      if (cfg_changed) {
+        // Never rebuild the kid job list during a remote Save — that LVGL tree
+        // tear is what freezes/mirrors the RGB panel. Bounce to Home; list is
+        // rebuilt the next time a kid card is opened.
+        if (screen_kind_ == ScreenKind::Kid || screen_kind_ == ScreenKind::NotDone) {
+          showHome();
+        } else if (screen_kind_ == ScreenKind::Home) {
+          updateHomeRemainders();
+          updateLeftoverHomeButton();
+          lock_screen_layout(screen_home_);
+        } else if (screen_kind_ == ScreenKind::Idle) {
+          refreshPrizeScores();
+          lock_screen_layout(screen_idle_);
+        }
       } else if (screen_kind_ == ScreenKind::Idle) {
         refreshActiveScreen();
       } else {
         refreshActiveScreen();
-        if (cfg_changed) {
-          pending_layout_lock_ = true;
-        }
       }
-    }
-  }
-
-  if (pending_job_rebuild_ && screen_kind_ == ScreenKind::Kid && !awaiting_doer_) {
-    pending_job_rebuild_ = false;
-    rebuildJobList();
-    updateKidHeader();
-  }
-
-  if (pending_layout_lock_) {
-    pending_layout_lock_ = false;
-    // Re-pin only the active screen after Save — locking every screen here was
-    // extra work during the freeze window.
-    switch (screen_kind_) {
-      case ScreenKind::Idle:
-        lock_screen_layout(screen_idle_);
-        break;
-      case ScreenKind::Home:
-        lock_screen_layout(screen_home_);
-        break;
-      case ScreenKind::Kid:
-        lock_screen_layout(screen_kid_);
-        if (job_list_) {
-          harden_scroll_list(job_list_);
-        }
-        break;
-      case ScreenKind::NotDone:
-        lock_screen_layout(screen_not_done_);
-        break;
     }
   }
 
