@@ -16,11 +16,11 @@ struct BleJobsView: View {
                             .fill(admin.bleReady ? Color.green : Color.orange)
                             .frame(width: 10, height: 10)
                     }
-                    if let name = admin.ble.panelName {
+                    if let name = admin.blePanelName {
                         Text("Found: \(name)").font(.footnote)
                     }
-                    if case .failed(let msg) = admin.ble.phase {
-                        Text(msg).font(.footnote).foregroundStyle(.pink)
+                    if let err = admin.bleError {
+                        Text(err).font(.footnote).foregroundStyle(.pink)
                     }
                     if !note.isEmpty {
                         Text(note).font(.footnote).foregroundStyle(.secondary)
@@ -38,15 +38,15 @@ struct BleJobsView: View {
                             note = ""
                         }
                         Button("Refresh jobs from panel") {
-                            admin.ble.requestConfig()
+                            admin.refreshBleConfig()
                             note = "Asked panel for current jobs…"
                         }
                     } else {
-                        Button(admin.ble.phase == .scanning ? "Scanning…" : "Scan for Kids Panel") {
+                        Button(admin.bleScanning ? "Scanning…" : "Scan for Kids Panel") {
                             note = "Looking for KidsPanel…"
                             admin.startBle()
                         }
-                        .disabled(admin.ble.phase == .scanning || admin.ble.phase == .connecting)
+                        .disabled(admin.bleScanning || admin.bleConnecting)
                     }
                 }
 
@@ -57,8 +57,8 @@ struct BleJobsView: View {
                 }
             }
             .navigationTitle("Bluetooth")
-            .onReceive(admin.ble.$phase) { phase in
-                if phase == .ready {
+            .onChange(of: admin.bleReady) { _, ready in
+                if ready {
                     note = "Connected — open Jobs and Save to panel"
                 }
             }
@@ -66,12 +66,10 @@ struct BleJobsView: View {
     }
 
     private var bleLabel: String {
-        switch admin.ble.phase {
-        case .idle: return "Not connected"
-        case .scanning: return "Scanning…"
-        case .connecting: return "Connecting…"
-        case .ready: return "Ready"
-        case .failed: return "Error"
-        }
+        if admin.bleReady { return "Ready" }
+        if admin.bleConnecting { return "Connecting…" }
+        if admin.bleScanning { return "Scanning…" }
+        if admin.bleError != nil { return "Error" }
+        return "Not connected"
     }
 }

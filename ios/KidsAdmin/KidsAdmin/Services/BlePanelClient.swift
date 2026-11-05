@@ -9,7 +9,7 @@ final class BlePanelClient: NSObject, ObservableObject {
     static let cmdUUID = CBUUID(string: "6B1D0002-5F8A-4B2E-9C71-0A1B2C3D4E5F")
     static let statusUUID = CBUUID(string: "6B1D0003-5F8A-4B2E-9C71-0A1B2C3D4E5F")
 
-    enum Phase: Equatable {
+    enum Phase: Equatable, Sendable {
         case idle
         case scanning
         case connecting
