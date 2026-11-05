@@ -116,29 +116,30 @@ With the Mosquitto add-on, enable `customize` (folder `mosquitto`), put `acl_fil
 
 (Plain MQTT on 1883 isn’t encrypted — keep the broker on your trusted LAN / VLAN, not the kids’ one.)
 
-### Home Assistant sketch
+### MikroTik Kid Control (internet unlock)
 
-```yaml
-automation:
-  - alias: "Xavier internet on"
-    trigger:
-      - platform: mqtt
-        topic: kids/xavier/internet
-        payload: "on"
-    action:
-      - service: # enable Xavier MikroTik profile
+The panel publishes retained `kids/{slug}/internet` = `on` / `off`. **MikroTik** should pause/resume Kid Control from that topic directly over **IoT MQTT**. Home Assistant only shows status and notifies — do **not** also call MikroTik from HA or you will double-toggle.
 
-  - alias: "Rewards — log help"
-    trigger:
-      - platform: mqtt
-        topic: kids/rewards/event
-    action:
-      - service: notify.persistent_notification
-        data:
-          message: "{{ trigger.payload_json.doer_name }} helped with {{ trigger.payload_json.owner_name }}'s {{ trigger.payload_json.job_label }}"
-```
+| MQTT | MikroTik |
+|------|----------|
+| `on` | `/ip kid-control resume {slug}` |
+| `off` | `/ip kid-control pause {slug}` |
 
-See `examples/homeassistant-mqtt.yaml` for more.
+Profile **names** must match the slugs: `xavier`, `presley`, `jax`, `banx`, `hazel`.
+
+**Setup**
+
+1. Install the MikroTik **IoT** package; create Kid Control profiles named as above and attach each kid’s devices (MAC).
+2. Edit broker `address` / `username` / `password` in [`examples/mikrotik-kids-control.rsc`](examples/mikrotik-kids-control.rsc), then paste into Terminal (or System → Scripts). Keep **`auto-connect=yes`** — without it the MQTT link drops after a few minutes and pause/resume stops working.
+3. Optionally pause everyone at first so devices stay locked until jobs are done:  
+   `/ip kid-control pause xavier,presley,jax,banx,hazel`
+4. Check: `/iot/mqtt/brokers print` should show `connected=yes` and `auto-connect=yes`; `/iot/mqtt/subscriptions print detail`; `/log print where message~"kids-jobs"`.
+
+Give the router its own Mosquitto user that can **read** `kids/+/internet` (and nothing else if you want).
+
+### Home Assistant (status + notify only)
+
+Import [`examples/homeassistant-mqtt.yaml`](examples/homeassistant-mqtt.yaml) for binary sensors (`Internet Ready`), reward tallies, unlock/lock notifications, and an optional morning `reset_all`. It does **not** drive the router.
 
 ## Jobs (from your list)
 
