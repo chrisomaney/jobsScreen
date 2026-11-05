@@ -481,6 +481,7 @@
     // Keep a stable kid order / ensure all known kids appear (Hazel was easy to clip off-screen).
     const known = [
       ['xavier', 'Xavier'], ['presley', 'Presley'], ['jax', 'Jax'], ['banx', 'Banx'], ['hazel', 'Hazel'],
+      ['chris', 'Chris'], ['stacy', 'Stacy'],
     ];
     const bySlug = Object.fromEntries(cfg.kids.map((k) => [k.slug, k]));
     cfg = {
@@ -695,7 +696,7 @@
   }
 
   // ---------- demo mode (no broker) ----------
-  const DEMO_KIDS = [['xavier', 'Xavier'], ['presley', 'Presley'], ['jax', 'Jax'], ['banx', 'Banx'], ['hazel', 'Hazel']];
+  const DEMO_KIDS = [['xavier', 'Xavier'], ['presley', 'Presley'], ['jax', 'Jax'], ['banx', 'Banx'], ['hazel', 'Hazel'], ['chris', 'Chris'], ['stacy', 'Stacy']];
   const DEMO_JOBS = [
     ['make_bed', 'make bed', 'expectation'], ['tidy_floor', 'tidy floor', 'expectation'],
     ['washing_in_baskets', 'washing in baskets', 'expectation'], ['towels_on_hooks', 'towels on hooks', 'expectation'],
@@ -726,6 +727,7 @@
       xavier: { pct: 72, internet: false }, presley: { pct: 100, internet: true },
       jax: { pct: 39, internet: false }, banx: { pct: 11, internet: false },
       hazel: { pct: 55, internet: false },
+      chris: { pct: 40, internet: false }, stacy: { pct: 40, internet: false },
     };
     $('connectCard').classList.add('hidden'); $('app').classList.remove('hidden');
     setConn('ok', 'Demo mode'); setPanel(true);

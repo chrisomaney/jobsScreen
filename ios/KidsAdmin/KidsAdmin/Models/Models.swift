@@ -83,5 +83,7 @@ enum AdminKid {
         .init(slug: "jax", name: "Jax", color: Color(red: 0.96, green: 0.62, blue: 0.04)),
         .init(slug: "banx", name: "Banx", color: Color(red: 0.13, green: 0.77, blue: 0.37)),
         .init(slug: "hazel", name: "Hazel", color: Color(red: 0.66, green: 0.33, blue: 0.97)),
+        .init(slug: "chris", name: "Chris", color: Color(red: 0.02, green: 0.71, blue: 0.83)),
+        .init(slug: "stacy", name: "Stacy", color: Color(red: 0.96, green: 0.25, blue: 0.37)),
     ]
 }

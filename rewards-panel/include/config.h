@@ -15,6 +15,8 @@ static const KidProfile KIDS[] = {
   {"Jax",     "jax",     0xF59E0B},  // orange
   {"Banx",    "banx",    0x22C55E},  // green
   {"Hazel",   "hazel",   0xA855F7},  // violet
+  {"Chris",   "chris",   0x06B6D4},  // cyan
+  {"Stacy",   "stacy",   0xF43F5E},  // rose
 };
 static const size_t KID_COUNT = sizeof(KIDS) / sizeof(KIDS[0]);
 

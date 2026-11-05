@@ -85,7 +85,7 @@ On boot the panel prints `[boot] reset reason: ...` (e.g. `PANIC`, `interrupt wa
 | `kids/config/state` | JSON | retained — kids, jobs, who has each job, “needed for internet” flags (read by the web app) |
 | `kids/config/set` | JSON | from the web app — assign `{"jobs":{…}}`, add `{"add":{"label","cat":"expectation\|paid",…}}`, or remove `{"remove":["custom_0"]}` |
 
-Slugs: `xavier`, `presley`, `jax`, `banx`, `hazel`.
+Slugs: `xavier`, `presley`, `jax`, `banx`, `hazel`, `chris`, `stacy`.
 
 **Admin commands:** `kids/{slug}/cmd/reset`, `kids/cmd/reset_all`, `kids/cmd/reset_rewards` (any non-empty payload, don’t retain). The panel clears any retained message on these topics when it connects.
 

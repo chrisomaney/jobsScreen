@@ -18,6 +18,8 @@ static const KidProfile KIDS[] = {
   {"Jax",     "jax",     0xF59E0B},  // amber
   {"Banx",    "banx",    0x22C55E},  // green
   {"Hazel",   "hazel",   0xA855F7},  // violet
+  {"Chris",   "chris",   0x06B6D4},  // cyan
+  {"Stacy",   "stacy",   0xF43F5E},  // rose
 };
 
 struct PrizeDef {
@@ -36,6 +38,8 @@ static const uint8_t KID_PRESLEY = 1u << 1;
 static const uint8_t KID_JAX     = 1u << 2;
 static const uint8_t KID_BANX    = 1u << 3;
 static const uint8_t KID_HAZEL   = 1u << 4;
+static const uint8_t KID_CHRIS   = 1u << 5;
+static const uint8_t KID_STACY   = 1u << 6;
 static const uint8_t ALL_KIDS    = 0xFF;
 
 // ---------------------------------------------------------------------------
