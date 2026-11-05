@@ -29,3 +29,9 @@
 #ifndef MQTT_CLIENT_ID
 #define MQTT_CLIENT_ID "kids-jobs-panel"
 #endif
+#ifndef OTA_HOSTNAME
+#define OTA_HOSTNAME "kids-jobs-panel"
+#endif
+#ifndef OTA_PASSWORD
+#define OTA_PASSWORD ""
+#endif
