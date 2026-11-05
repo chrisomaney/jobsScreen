@@ -33,7 +33,13 @@ public:
     pending_publish_summaries_ = true;
   }
   bool connected() { return client_.connected(); }
-  bool busyPublishing() const { return pub_phase_ != PubPhase::Idle; }
+  // True while a remote Save is still being applied or echoed over MQTT.
+  bool busyPublishing() const {
+    return pub_phase_ != PubPhase::Idle || pending_publish_all_ || pending_publish_config_ ||
+           pending_publish_catalog_ || pending_publish_rules_ || pending_publish_net_sched_ ||
+           pending_publish_summaries_ || pending_config_apply_ || pending_catalog_apply_ ||
+           pending_rules_apply_ || pending_net_sched_apply_;
+  }
   void handleMessage(char *topic, byte *payload, unsigned int length);
 
 private:
