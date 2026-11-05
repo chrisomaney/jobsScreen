@@ -905,7 +905,7 @@ void AppUi::showDoerPicker(size_t owner, size_t job) {
   snprintf(buf, sizeof(buf), "Who helped with %s's \"%s\"?", KIDS[owner].name, JobState::jobLabel(job));
   lv_label_set_text(doer_prompt_, buf);
   applyBacklightForScreen();
-  lv_scr_load(screen_doer_);
+  loadScreen(screen_doer_);
 }
 
 void AppUi::completeLeftover(size_t doer) {
@@ -1056,6 +1056,49 @@ void AppUi::showPrizeSplashFromState() {
   state_->clearSplash();
 }
 
+void AppUi::loadScreen(lv_obj_t *screen) {
+  if (!screen) {
+    return;
+  }
+  lock_screen_layout(screen);
+  lv_scr_load(screen);
+  lock_screen_layout(screen);
+  lv_obj_invalidate(screen);
+}
+
+void AppUi::pinActiveScreen() {
+  lv_obj_t *act = lv_scr_act();
+  lock_screen_layout(act);
+  if (act == screen_idle_) {
+    harden_layer(ad_layer_);
+    harden_layer(picker_layer_);
+    harden_layer(splash_layer_);
+  } else if (act == screen_kid_ && job_list_) {
+    harden_scroll_list(job_list_);
+    lv_obj_scroll_to_y(job_list_, 0, LV_ANIM_OFF);
+  } else if (act == screen_not_done_ && not_done_list_) {
+    harden_scroll_list(not_done_list_);
+    lv_obj_scroll_to_y(not_done_list_, 0, LV_ANIM_OFF);
+  }
+  if (act) {
+    lv_obj_invalidate(act);
+  }
+}
+
+void AppUi::syncAfterRemoteSave() {
+  // Never lv_scr_load here. After a config Save, skip job-list rebuild (that
+  // tree tear flips the RGB panel) — rows refresh the next time the kid page
+  // is opened. Other screens get a light in-place refresh.
+  if (kid_list_stale_ && screen_kind_ == ScreenKind::Kid) {
+    updateKidHeader();
+  } else if (screen_kind_ == ScreenKind::NotDone) {
+    // Don't rebuild the leftover list mid-session either — pin only.
+  } else {
+    refreshActiveScreen();
+  }
+  pinActiveScreen();
+}
+
 void AppUi::showIdle() {
   awaiting_doer_ = false;
   screen_kind_ = ScreenKind::Idle;
@@ -1063,7 +1106,7 @@ void AppUi::showIdle() {
   setIdleMode(IdleMode::Ads);
   refreshPrizeAd();
   last_carousel_ms_ = millis();
-  lv_scr_load(screen_idle_);
+  loadScreen(screen_idle_);
 }
 
 void AppUi::showHome() {
@@ -1072,7 +1115,7 @@ void AppUi::showHome() {
   applyBacklightForScreen();
   updateHomeRemainders();
   updateLeftoverHomeButton();
-  lv_scr_load(screen_home_);
+  loadScreen(screen_home_);
 }
 
 void AppUi::showKidPage(size_t kid, KidPage page) {
@@ -1085,8 +1128,9 @@ void AppUi::showKidPage(size_t kid, KidPage page) {
   screen_kind_ = ScreenKind::Kid;
   applyBacklightForScreen();
   rebuildJobList();
+  kid_list_stale_ = false;
   updateKidHeader();
-  lv_scr_load(screen_kid_);
+  loadScreen(screen_kid_);
 }
 
 void AppUi::showNotDone() {
@@ -1098,7 +1142,7 @@ void AppUi::showNotDone() {
   screen_kind_ = ScreenKind::NotDone;
   applyBacklightForScreen();
   rebuildNotDoneList();
-  lv_scr_load(screen_not_done_);
+  loadScreen(screen_not_done_);
 }
 
 void AppUi::refreshActiveScreen() {
@@ -1133,17 +1177,23 @@ void AppUi::refreshActiveScreen() {
 }
 
 void AppUi::tick() {
-  // LVGL tracks time since the last touch, so no extra GT911 reads needed
-  if (isActiveSession() && display_board_inactive_ms() >= IDLE_TIMEOUT_MS) {
+  const bool mqtt_busy = mqtt_ && mqtt_->busyPublishing();
+
+  // LVGL tracks time since the last touch, so no extra GT911 reads needed.
+  // Never switch screens while a Save echo is in flight — lv_scr_load during
+  // MQTT/Wi-Fi is what flips/mirrors the RGB panel.
+  if (!mqtt_busy && isActiveSession() && display_board_inactive_ms() >= IDLE_TIMEOUT_MS) {
     showIdle();
   }
 
   if (rewards_ && rewards_->revision() != seen_rewards_revision_) {
     seen_rewards_revision_ = rewards_->revision();
-    refreshMessageOverlay();
+    if (!mqtt_busy) {
+      refreshMessageOverlay();
+    }
   }
 
-  if (screen_kind_ == ScreenKind::Idle) {
+  if (screen_kind_ == ScreenKind::Idle && !mqtt_busy && !ui_sync_pending_) {
     if (idle_mode_ == IdleMode::Splash && millis() >= splash_until_ms_) {
       setIdleMode(IdleMode::Ads);
       refreshPrizeAd();
@@ -1163,29 +1213,29 @@ void AppUi::tick() {
     seen_revision_ = rev;
     seen_config_revision_ = cfg_rev;
     if (state_->pendingSplash().kind != JobState::SplashKind::None &&
-        screen_kind_ == ScreenKind::Idle) {
+        screen_kind_ == ScreenKind::Idle && !mqtt_busy && !cfg_changed) {
       showPrizeSplashFromState();
     } else if (!awaiting_doer_) {
       if (cfg_changed) {
-        // Never rebuild the kid job list during a remote Save — that LVGL tree
-        // tear is what freezes/mirrors the RGB panel. Bounce to Home; list is
-        // rebuilt the next time a kid card is opened.
-        if (screen_kind_ == ScreenKind::Kid || screen_kind_ == ScreenKind::NotDone) {
-          showHome();
-        } else if (screen_kind_ == ScreenKind::Home) {
-          updateHomeRemainders();
-          updateLeftoverHomeButton();
-          lock_screen_layout(screen_home_);
-        } else if (screen_kind_ == ScreenKind::Idle) {
-          refreshPrizeScores();
-          lock_screen_layout(screen_idle_);
-        }
-      } else if (screen_kind_ == ScreenKind::Idle) {
+        // Remote Save: do NOT lv_scr_load / rebuild while MQTT is echoing —
+        // that's what flips/mirrors the RGB panel. Pin the current frame and
+        // apply light text updates after the publish queue drains.
+        kid_list_stale_ = true;
+        ui_sync_pending_ = true;
+        pinActiveScreen();
+      } else if (!mqtt_busy && !ui_sync_pending_) {
         refreshActiveScreen();
       } else {
-        refreshActiveScreen();
+        // Job/state change arrived mid-Save echo — refresh after MQTT drains.
+        ui_sync_pending_ = true;
+        pinActiveScreen();
       }
     }
+  }
+
+  if (ui_sync_pending_ && !mqtt_busy && !awaiting_doer_) {
+    ui_sync_pending_ = false;
+    syncAfterRemoteSave();
   }
 
   static uint32_t last_clock_ms = 0;
@@ -1199,7 +1249,8 @@ void AppUi::tick() {
     if (screen_kind_ == ScreenKind::Home) {
       updateLeftoverHomeButton();
     }
-    if (screen_kind_ == ScreenKind::NotDone && !clock_leftover_screen_open() && !awaiting_doer_) {
+    if (!mqtt_busy && screen_kind_ == ScreenKind::NotDone && !clock_leftover_screen_open() &&
+        !awaiting_doer_) {
       showHome();
     }
   }
