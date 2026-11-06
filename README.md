@@ -52,9 +52,21 @@ cp include/secrets.example.h include/secrets.h
 5. Build & flash:
 
 ```bash
-pio run -t upload
+pio run -e ws7 -t upload
 pio device monitor
 ```
+
+On Windows, **always use the short env `ws7`** (same firmware, shorter paths). If you see
+`#include <bits/…>: Invalid argument` or paths under `esp_ble_mesh\…\bits\`, that is a
+known Arduino-ESP32 3.x + Windows include bug — this repo strips those mesh include
+dirs automatically. Still do a clean rebuild after pulling:
+
+```powershell
+pio run -e ws7 -t clean
+pio run -e ws7 -t upload
+```
+
+Keep the project folder path short if you can (e.g. `C:\jobsScreen`), and avoid spaces in the path.
 
 ### OTA updates (no more hauling the panel downstairs)
 
@@ -65,17 +77,30 @@ The 16MB partition table already has dual app slots. After **one USB flash** of 
 3. From the same LAN (or via a temporary WAN port-forward to the panel’s **TCP 3232**):
 
 ```bash
+# bash / macOS / Linux
 export OTA_HOST=192.168.1.50          # LAN IP, or your public IP when forwarding
-export OTA_PORT=3232                  # or the external WAN port you opened
 export OTA_PASSWORD='your-ota-password'
-pio run -e waveshare-esp32s3-touch-lcd-7-ota -t upload
+# optional: export OTA_PORT=43232     # only if WAN forward uses a non-3232 external port
+pio run -e ws7-ota -t upload
 ```
+
+```powershell
+# Windows PowerShell — do NOT pass a COM port to the OTA env
+$env:OTA_HOST='192.168.1.50'
+$env:OTA_PASSWORD='your-ota-password'
+pio run -e ws7-ota -t upload
+```
+
+| Goal | Env |
+|------|-----|
+| USB / COM flash | `ws7` |
+| Wi‑Fi / WAN OTA | `ws7-ota` + `OTA_HOST` IP |
 
 Close the WAN forward when you’re done. Never leave OTA open to the internet without a password.
 
-If you see `fatal error: Network.h: No such file or directory`, pull the latest `main` (the include paths in `platformio.ini` are now relative, so project folders with spaces or Windows paths work), then run `pio run -t clean` and build again.
+If you see `fatal error: Network.h: No such file or directory`, pull the latest `main` (the include paths in `platformio.ini` are now relative, so project folders with spaces or Windows paths work), then run `pio run -e ws7 -t clean` and build again.
 
-If you see `lv_conf.h: No such file` on Windows, pull the latest from this branch (LV_CONF_PATH was removed — it breaks on Windows paths) and run `pio run -t clean` then `pio run`.
+If you see `lv_conf.h: No such file` on Windows, pull the latest (LV_CONF_PATH was removed — it breaks on Windows paths) and run `pio run -e ws7 -t clean` then `pio run -e ws7`.
 
 `lib/Network` is a vendored copy of the Arduino-ESP32 3.0.7 Network library (link helper for `WiFi` → `Network.h`). If it’s ever missing:
 
