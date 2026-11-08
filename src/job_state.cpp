@@ -310,6 +310,7 @@ void JobState::begin() {
     g_required[j] = true;
   }
   loadConfig();
+  loadPins();
   for (size_t k = 0; k < KID_COUNT; ++k) {
     loadKid(k);
   }
@@ -423,6 +424,81 @@ void JobState::persistConfig() {
   }
 }
 
+void JobState::loadPins() {
+  for (size_t k = 0; k < KID_COUNT; ++k) {
+    pins_[k][0] = '\0';
+  }
+  const size_t n = prefs_.getBytesLength("pins");
+  if (n == 0) {
+    return;
+  }
+  char *buf = static_cast<char *>(malloc(n + 1));
+  if (!buf) {
+    return;
+  }
+  const size_t got = prefs_.getBytes("pins", buf, n);
+  buf[got < n ? got : n] = '\0';
+  JsonDocument doc;
+  if (deserializeJson(doc, buf, got) == DeserializationError::Ok) {
+    for (size_t k = 0; k < KID_COUNT; ++k) {
+      if (doc[KIDS[k].slug].is<const char *>()) {
+        setPin(k, doc[KIDS[k].slug].as<const char *>());
+      }
+    }
+  }
+  free(buf);
+}
+
+void JobState::persistPins() {
+  JsonDocument doc;
+  for (size_t k = 0; k < KID_COUNT; ++k) {
+    doc[KIDS[k].slug] = pins_[k];
+  }
+  String out;
+  serializeJson(doc, out);
+  prefs_.putBytes("pins", out.c_str(), out.length());
+}
+
+bool JobState::hasPin(size_t kid) const {
+  return kid < KID_COUNT && pins_[kid][0] != '\0';
+}
+
+const char *JobState::pin(size_t kid) const {
+  return kid < KID_COUNT ? pins_[kid] : "";
+}
+
+bool JobState::checkPin(size_t kid, const char *entered) const {
+  if (!hasPin(kid) || !entered) {
+    return !hasPin(kid);
+  }
+  return strcmp(pins_[kid], entered) == 0;
+}
+
+bool JobState::setPin(size_t kid, const char *pin) {
+  if (kid >= KID_COUNT) {
+    return false;
+  }
+  char next[5] = "";
+  if (pin && pin[0]) {
+    size_t n = 0;
+    for (; pin[n] && n < 4; ++n) {
+      if (pin[n] < '0' || pin[n] > '9') {
+        return false;
+      }
+      next[n] = pin[n];
+    }
+    if (n != 4 || pin[4] != '\0') {
+      return false;  // must be exactly 4 digits or empty
+    }
+    next[4] = '\0';
+  }
+  if (strcmp(pins_[kid], next) == 0) {
+    return false;
+  }
+  memcpy(pins_[kid], next, sizeof(next));
+  return true;
+}
+
 bool JobState::applyConfigJson(const char *json, size_t len) {
   JsonDocument doc;
   const DeserializationError err = deserializeJson(doc, json, len);
@@ -432,6 +508,19 @@ bool JobState::applyConfigJson(const char *json, size_t len) {
   }
 
   bool changed = applyJobsObject(doc["jobs"].as<JsonObjectConst>());
+  bool pins_changed = false;
+  if (doc["pins"].is<JsonObjectConst>()) {
+    for (JsonPairConst kv : doc["pins"].as<JsonObjectConst>()) {
+      const int ki = kidIndex(kv.key().c_str());
+      if (ki < 0) {
+        continue;
+      }
+      const char *val = kv.value().is<const char *>() ? kv.value().as<const char *>() : "";
+      if (setPin(static_cast<size_t>(ki), val)) {
+        pins_changed = true;
+      }
+    }
+  }
 
   // {"add":{"label":"pack lunch","cat":"expectation"|"paid",...}}
   if (doc["add"].is<JsonObjectConst>()) {
@@ -487,12 +576,18 @@ bool JobState::applyConfigJson(const char *json, size_t len) {
     }
   }
 
-  if (!changed) {
+  if (!changed && !pins_changed) {
     return false;
   }
   // MUST flush to NVS before returning — deferred persist was lost whenever the
   // RGB panel froze and the user power-cycled (Save looked OK, then vanished).
-  persistConfig();
+  if (changed) {
+    persistConfig();
+  }
+  if (pins_changed) {
+    persistPins();
+    Serial.println("[jobs] pins persisted");
+  }
   for (size_t k = 0; k < KID_COUNT; ++k) {
     if (persist_kid_pending_[k]) {
       persist_kid_pending_[k] = false;
@@ -554,6 +649,10 @@ String JobState::configStateJson() const {
     JsonObject o = kids.add<JsonObject>();
     o["slug"] = KIDS[k].slug;
     o["name"] = KIDS[k].name;
+  }
+  JsonObject pins = doc["pins"].to<JsonObject>();
+  for (size_t k = 0; k < KID_COUNT; ++k) {
+    pins[KIDS[k].slug] = pins_[k];
   }
   JsonArray jobs = doc["jobs"].to<JsonArray>();
   for (size_t j = 0; j < JOB_COUNT; ++j) {

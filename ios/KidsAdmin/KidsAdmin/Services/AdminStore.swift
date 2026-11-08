@@ -8,6 +8,7 @@ final class AdminStore: ObservableObject {
     @Published var status: [String: KidLiveStatus] = [:]
     @Published var jobs: [JobItem] = []
     @Published var jobPoints: [String: Int] = [:]
+    @Published var pins: [String: String] = [:]
     @Published var expBundle: Int = 0
     @Published var customSlotsFree: Int? = nil
     @Published var commonInternetOn = false
@@ -368,9 +369,33 @@ final class AdminStore: ObservableObject {
         }
     }
 
+    func setPin(slug: String, pin: String) {
+        let trimmed = pin.filter(\.isNumber)
+        guard trimmed.isEmpty || trimmed.count == 4 else {
+            lastError = "PIN must be 4 digits or blank"
+            return
+        }
+        publishConfig(["pins": [slug: trimmed]])
+        pins[slug] = trimmed
+    }
+
     private func parseConfig(_ data: Data) {
         guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
         customSlotsFree = obj["customSlotsFree"] as? Int
+        if let p = obj["pins"] as? [String: Any] {
+            var next: [String: String] = [:]
+            for kid in AdminKid.all {
+                if let s = p[kid.slug] as? String {
+                    next[kid.slug] = s
+                } else {
+                    next[kid.slug] = pins[kid.slug] ?? ""
+                }
+            }
+            for (k, v) in p {
+                if next[k] == nil, let s = v as? String { next[k] = s }
+            }
+            pins = next
+        }
         let arr = obj["jobs"] as? [[String: Any]] ?? []
         let prev = Set(jobs.map(\.id))
         jobs = arr.compactMap { j in

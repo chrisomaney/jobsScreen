@@ -20,6 +20,7 @@ data class AdminUiState(
     val status: Map<String, KidLiveStatus> = AdminKids.all.associate { it.slug to KidLiveStatus() },
     val jobs: List<JobItem> = emptyList(),
     val jobPoints: Map<String, Int> = emptyMap(),
+    val pins: Map<String, String> = AdminKids.all.associate { it.slug to "" },
     val expBundle: Int = 0,
     val customSlotsFree: Int? = null,
     val commonInternetOn: Boolean = false,
@@ -167,6 +168,25 @@ class AdminViewModel(app: Application) : AndroidViewModel(app) {
         publishJson("kids/config/set", JSONObject().put("remove", JSONArray().put(id)))
     }
 
+    fun setPin(slug: String, pin: String) {
+        val trimmed = pin.filter { it.isDigit() }.take(4)
+        if (trimmed.isNotEmpty() && trimmed.length != 4) {
+            _ui.update { it.copy(lastError = "PIN must be 4 digits or blank") }
+            return
+        }
+        publishJson(
+            "kids/config/set",
+            JSONObject().put("pins", JSONObject().put(slug, trimmed)),
+        )
+        _ui.update {
+            it.copy(
+                pins = it.pins + (slug to trimmed),
+                banner = "PIN updated",
+                lastError = null,
+            )
+        }
+    }
+
     fun setExpBundle(value: Int) {
         _ui.update { it.copy(expBundle = value.coerceAtLeast(0)) }
     }
@@ -269,6 +289,20 @@ class AdminViewModel(app: Application) : AndroidViewModel(app) {
             for (j in jobs) {
                 if (j.id !in points) points[j.id] = if (j.cat == "paid") 1 else 0
             }
+            val pinObj = obj.optJSONObject("pins")
+            val pins = _ui.value.pins.toMutableMap()
+            if (pinObj != null) {
+                for (kid in AdminKids.all) {
+                    if (pinObj.has(kid.slug)) {
+                        pins[kid.slug] = pinObj.optString(kid.slug, "")
+                    }
+                }
+                val keys = pinObj.keys()
+                while (keys.hasNext()) {
+                    val k = keys.next()
+                    if (k !in pins) pins[k] = pinObj.optString(k, "")
+                }
+            }
             pendingPaidPoints?.let { (label, pts) ->
                 val created = jobs.firstOrNull { it.id !in prev && it.label == label && it.cat == "paid" }
                 if (created != null) {
@@ -278,6 +312,7 @@ class AdminViewModel(app: Application) : AndroidViewModel(app) {
                         it.copy(
                             jobs = jobs,
                             jobPoints = points,
+                            pins = pins,
                             customSlotsFree = obj.optInt("customSlotsFree").takeIf { obj.has("customSlotsFree") },
                         )
                     }
@@ -289,6 +324,7 @@ class AdminViewModel(app: Application) : AndroidViewModel(app) {
                 it.copy(
                     jobs = jobs,
                     jobPoints = points,
+                    pins = pins,
                     customSlotsFree = if (obj.has("customSlotsFree")) obj.optInt("customSlotsFree") else null,
                 )
             }
