@@ -44,6 +44,8 @@ object AdminKids {
         KidInfo("jax", "Jax", Color(0xFFF59E0B)),
         KidInfo("banx", "Banx", Color(0xFF22C55E)),
         KidInfo("hazel", "Hazel", Color(0xFFA855F7)),
+        KidInfo("woomba", "Woomba", Color(0xFF06B6D4)),
+        KidInfo("wilma", "Wilma", Color(0xFFF43F5E)),
     )
 }
 
