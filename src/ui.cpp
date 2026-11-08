@@ -185,6 +185,7 @@ void AppUi::begin(JobState *state, MqttBridge *mqtt, RewardEngine *rewards) {
   buildKidScaffold();
   buildNotDoneScaffold();
   buildDoerPicker();
+  buildPinPad();
   buildMessageOverlay();
   last_carousel_ms_ = millis();
   showIdle();
@@ -618,6 +619,114 @@ void AppUi::buildDoerPicker() {
   lv_obj_add_event_cb(cancel, onDoerCancel, LV_EVENT_CLICKED, nullptr);
   lv_obj_t *cl = make_label(cancel, "Cancel", &lv_font_montserrat_16, COL_TEXT);
   lv_obj_center(cl);
+}
+
+void AppUi::buildPinPad() {
+  screen_pin_ = lv_obj_create(nullptr);
+  prep_screen(screen_pin_);
+  lv_obj_set_style_bg_color(screen_pin_, c(COL_BG), 0);
+  lv_obj_set_style_bg_opa(screen_pin_, LV_OPA_COVER, 0);
+
+  pin_title_ = make_label(screen_pin_, "Enter PIN", &lv_font_montserrat_28, COL_TEXT);
+  lv_obj_align(pin_title_, LV_ALIGN_TOP_MID, 0, 36);
+
+  pin_dots_ = make_label(screen_pin_, "-  -  -  -", &lv_font_montserrat_28, COL_TEXT);
+  lv_obj_align(pin_dots_, LV_ALIGN_TOP_MID, 0, 90);
+
+  pin_hint_ = make_label(screen_pin_, " ", &lv_font_montserrat_16, COL_MUTED);
+  lv_obj_align(pin_hint_, LV_ALIGN_TOP_MID, 0, 132);
+
+  // 3×4 pad: 1-9 / Clear 0 Cancel — wide enough for finger taps
+  const int cols = 3;
+  const int btn_w = 180;
+  const int btn_h = 64;
+  const int gap_x = 18;
+  const int gap_y = 12;
+  const int origin_x = (800 - (cols * btn_w + (cols - 1) * gap_x)) / 2;
+  const int origin_y = 170;
+  static const char *const keys[12] = {"1", "2", "3", "4", "5", "6", "7", "8", "9", "Clear", "0",
+                                       "Cancel"};
+  for (int i = 0; i < 12; ++i) {
+    const int col = i % cols;
+    const int row = i / cols;
+    lv_obj_t *btn = lv_btn_create(screen_pin_);
+    lv_obj_set_size(btn, btn_w, btn_h);
+    lv_obj_set_pos(btn, origin_x + col * (btn_w + gap_x), origin_y + row * (btn_h + gap_y));
+    style_glass_btn(btn);
+    lv_obj_set_style_bg_color(btn, c(COL_CARD), 0);
+    lv_obj_set_style_radius(btn, 14, 0);
+    if (i < 9 || i == 10) {
+      const uintptr_t digit = static_cast<uintptr_t>(keys[i][0]);
+      lv_obj_add_event_cb(btn, onPinDigit, LV_EVENT_CLICKED, reinterpret_cast<void *>(digit));
+    } else if (i == 9) {
+      lv_obj_add_event_cb(btn, onPinClear, LV_EVENT_CLICKED, nullptr);
+    } else {
+      lv_obj_add_event_cb(btn, onPinCancel, LV_EVENT_CLICKED, nullptr);
+    }
+    lv_obj_t *lbl = make_label(btn, keys[i], &lv_font_montserrat_24, COL_TEXT);
+    lv_obj_center(lbl);
+  }
+  pin_entry_[0] = '\0';
+  pin_kid_ = 0;
+}
+
+void AppUi::refreshPinDots() {
+  if (!pin_dots_) {
+    return;
+  }
+  const size_t n = strlen(pin_entry_);
+  char buf[32];
+  // ASCII only — montserrat subset on the panel has no bullet glyphs.
+  snprintf(buf, sizeof(buf), "%s  %s  %s  %s", n > 0 ? "*" : "-", n > 1 ? "*" : "-",
+           n > 2 ? "*" : "-", n > 3 ? "*" : "-");
+  lv_label_set_text(pin_dots_, buf);
+}
+
+void AppUi::showPinPad(size_t kid) {
+  if (kid >= KID_COUNT || !screen_pin_) {
+    return;
+  }
+  awaiting_doer_ = false;
+  pin_kid_ = kid;
+  pin_entry_[0] = '\0';
+  screen_kind_ = ScreenKind::Pin;
+  char title[48];
+  snprintf(title, sizeof(title), "%s's PIN", KIDS[kid].name);
+  lv_label_set_text(pin_title_, title);
+  lv_label_set_text(pin_hint_, " ");
+  refreshPinDots();
+  applyBacklightForScreen();
+  loadScreen(screen_pin_);
+}
+
+void AppUi::pinDigit(char d) {
+  const size_t n = strlen(pin_entry_);
+  if (n >= 4 || d < '0' || d > '9') {
+    return;
+  }
+  pin_entry_[n] = d;
+  pin_entry_[n + 1] = '\0';
+  refreshPinDots();
+  if (n + 1 < 4) {
+    return;
+  }
+  if (state_->checkPin(pin_kid_, pin_entry_)) {
+    showKidPage(pin_kid_, KidPage::Expectations);
+    return;
+  }
+  pin_entry_[0] = '\0';
+  refreshPinDots();
+  if (pin_hint_) {
+    lv_label_set_text(pin_hint_, "Wrong PIN — try again");
+  }
+}
+
+void AppUi::pinClear() {
+  pin_entry_[0] = '\0';
+  refreshPinDots();
+  if (pin_hint_) {
+    lv_label_set_text(pin_hint_, " ");
+  }
 }
 
 void AppUi::updateLeftoverHomeButton() {
@@ -1174,6 +1283,9 @@ void AppUi::refreshActiveScreen() {
     case ScreenKind::NotDone:
       rebuildNotDoneList();
       break;
+    case ScreenKind::Pin:
+      lock_screen_layout(screen_pin_);
+      break;
   }
 }
 
@@ -1318,7 +1430,33 @@ void AppUi::onLetsGo(lv_event_t *e) {
 
 void AppUi::onKidCard(lv_event_t *e) {
   const size_t kid = reinterpret_cast<size_t>(lv_event_get_user_data(e));
-  self_->showKidPage(kid, KidPage::Expectations);
+  if (self_->state_->hasPin(kid)) {
+    self_->showPinPad(kid);
+  } else {
+    self_->showKidPage(kid, KidPage::Expectations);
+  }
+}
+
+void AppUi::onPinDigit(lv_event_t *e) {
+  if (!self_) {
+    return;
+  }
+  const char d = static_cast<char>(reinterpret_cast<uintptr_t>(lv_event_get_user_data(e)));
+  self_->pinDigit(d);
+}
+
+void AppUi::onPinClear(lv_event_t *e) {
+  (void)e;
+  if (self_) {
+    self_->pinClear();
+  }
+}
+
+void AppUi::onPinCancel(lv_event_t *e) {
+  (void)e;
+  if (self_) {
+    self_->showHome();
+  }
 }
 
 void AppUi::onNotDoneCard(lv_event_t *e) {

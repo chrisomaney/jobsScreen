@@ -29,12 +29,20 @@ public:
   //   {"jobs":{"<id>":{"kids":[...],"required":true,"label":"...","detail":"...","cat":"paid"}}}
   //   {"add":{"label":"pack lunch","cat":"expectation","required":true,"kids":["jax"]}}
   //   {"remove":["custom_0"]}
+  //   {"pins":{"xavier":"1234","presley":""}}  // 4 digits or "" to clear
   // Built-ins accept label/detail/cat overrides (saved to NVS). Custom slots only for add/remove.
   // Partial updates allowed; unknown ids ignored. Returns true if anything changed.
   bool applyConfigJson(const char *json, size_t len);
   // Full config + kid/job catalogue for the web app (kids/config/state).
   String configStateJson() const;
   uint32_t configRevision() const { return config_revision_; }
+
+  // Per-kid 4-digit unlock PIN (empty = no pad on Home).
+  bool hasPin(size_t kid) const;
+  const char *pin(size_t kid) const;
+  bool checkPin(size_t kid, const char *entered) const;
+  // pin must be "" or exactly 4 digits. Returns true if stored value changed.
+  bool setPin(size_t kid, const char *pin);
 
   bool isDone(size_t kid, size_t job) const;
   void setDone(size_t kid, size_t job, bool done);
@@ -141,8 +149,11 @@ private:
   bool persist_catalog_pending_ = false;
   bool persist_net_sched_pending_ = false;
   bool persist_kid_pending_[KID_COUNT]{};
+  char pins_[KID_COUNT][5]{};  // 4 digits + NUL; empty = unlocked
   void persistConfig();
   void loadConfig();
+  void persistPins();
+  void loadPins();
   void bump() { ++revision_; }
   void persistKid(size_t kid);
   void markPersistKid(size_t kid);

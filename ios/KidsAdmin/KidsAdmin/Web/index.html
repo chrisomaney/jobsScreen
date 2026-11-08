@@ -106,9 +106,17 @@
   .check { display: flex; align-items: center; gap: 8px; font-size: var(--text-sm); color: var(--ink-2); margin: 4px 0 14px; }
 
   /* Add expectation / job */
-  .addcard { padding: 14px 16px; margin: 14px 0 4px; }
-  .addcard h2 { font-family: var(--font-display); font-weight: 600; font-size: var(--text-lg); margin: 0 0 2px; }
-  .addcard .hint { margin: 0 0 12px; color: var(--ink-2); font-size: var(--text-sm); }
+  .addcard, .pincard { padding: 14px 16px; margin: 14px 0 4px; }
+  .addcard h2, .pincard h2 { font-family: var(--font-display); font-weight: 600; font-size: var(--text-lg); margin: 0 0 2px; }
+  .addcard .hint, .pincard .hint { margin: 0 0 12px; color: var(--ink-2); font-size: var(--text-sm); }
+  .pinlist { display: grid; gap: 8px; }
+  .pinrow { display: grid; grid-template-columns: minmax(72px, 1fr) 110px auto; gap: 8px; align-items: center; }
+  .pinrow .name { font-weight: 700; }
+  .pinrow input {
+    width: 100%; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line);
+    background: var(--bg); font-variant-numeric: tabular-nums; letter-spacing: .12em; text-align: center;
+  }
+  .pinrow .btn { padding: 8px 12px; }
   .seg {
     display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px;
     background: var(--bg); border: 1px solid var(--line); border-radius: 12px; margin-bottom: 10px;
@@ -296,6 +304,12 @@
   <div id="app" class="hidden">
     <div class="kids" id="kids"></div>
 
+    <div class="card pincard" id="pinCard">
+      <h2>Kid unlock PINs</h2>
+      <p class="hint">4 digits to open that kid on the panel. Leave blank for no PIN.</p>
+      <div class="pinlist" id="pins"></div>
+    </div>
+
     <form class="card addcard" id="addForm">
       <h2>Add expectation or job</h2>
       <p class="hint">Creates a new item on the panel. Tick who does it after it appears.</p>
@@ -369,10 +383,12 @@
   let demo = false;
   let base = null;          // last config from the panel
   let draft = {};           // id -> { kids: Set, required: bool }
+  let pinDraft = {};        // slug -> 4-digit string (or '')
   let progress = {};        // slug -> progress JSON
   let saving = null;        // { timer }
   let addCat = 'expectation';
   let adding = false;
+  let pinSaving = null;     // slug currently waiting for echo
 
   // ---------- connection form ----------
   const saved = (() => { try { return JSON.parse(localStorage.getItem(STORE_KEY) || 'null'); } catch { return null; } })();
@@ -413,7 +429,7 @@
   $('demoBtn').addEventListener('click', startDemo);
   $('disconnect').addEventListener('click', () => {
     if (client) { client.end(true); client = null; }
-    demo = false; base = null; draft = {};
+    demo = false; base = null; draft = {}; pinDraft = {}; pinSaving = null;
     $('app').classList.add('hidden'); $('connectCard').classList.remove('hidden');
     $('panelPill').classList.add('hidden');
     setConn('', 'Not connected'); updateSaveBar();
@@ -492,12 +508,20 @@
     };
     const dirty = base && changedIds().length > 0;
     const prevIds = base ? new Set(base.jobs.map((j) => j.id)) : null;
+    const pins = cfg.pins && typeof cfg.pins === 'object' ? cfg.pins : {};
     base = cfg;
+    pinDraft = Object.fromEntries(cfg.kids.map((k) => [k.slug, String(pins[k.slug] || '')]));
     if (!dirty || saving) draft = cloneDraft(cfg);
     else for (const j of cfg.jobs) if (!draft[j.id]) draft[j.id] = { kids: new Set(j.kids), required: !!j.required };
     if (saving) {
       clearTimeout(saving.timer); saving = null;
       toast('Saved - the panel is updated');
+    }
+    if (pinSaving) {
+      clearTimeout(pinSaving.timer);
+      const slug = pinSaving.slug;
+      pinSaving = null;
+      toast(`PIN updated for ${cfg.kids.find((k) => k.slug === slug)?.name || slug}`);
     }
     if (adding) {
       const kind = adding.kind;
@@ -636,7 +660,49 @@
     $('discard').disabled = !!saving;
   }
 
-  function render() { renderKids(); renderGroups(); updateSaveBar(); updateAddForm(); }
+  function normalizePin(v) {
+    const digits = String(v || '').replace(/\D/g, '').slice(0, 4);
+    return digits;
+  }
+  function renderPins() {
+    if (!base) { $('pins').innerHTML = ''; return; }
+    $('pins').innerHTML = base.kids.map((k, i) => {
+      const val = pinDraft[k.slug] ?? '';
+      const dirty = String((base.pins && base.pins[k.slug]) || '') !== val;
+      const busy = pinSaving && pinSaving.slug === k.slug;
+      return `<div class="pinrow" style="${kidVars(i)}">
+        <div class="name">${esc(k.name)}</div>
+        <input type="password" inputmode="numeric" maxlength="4" pattern="[0-9]*" autocomplete="off"
+          data-pin="${esc(k.slug)}" value="${esc(val)}" placeholder="····" aria-label="${esc(k.name)} PIN">
+        <button type="button" class="btn primary" data-pinsave="${esc(k.slug)}"
+          ${(!dirty || busy || (val.length > 0 && val.length !== 4)) ? 'disabled' : ''}>${busy ? '…' : 'Set'}</button>
+      </div>`;
+    }).join('');
+  }
+  function render() { renderKids(); renderPins(); renderGroups(); updateSaveBar(); updateAddForm(); }
+
+  $('pins').addEventListener('input', (e) => {
+    const inp = e.target.closest('input[data-pin]');
+    if (!inp || !base) return;
+    const slug = inp.dataset.pin;
+    const next = normalizePin(inp.value);
+    pinDraft[slug] = next;
+    if (inp.value !== next) inp.value = next;
+    renderPins();
+  });
+  $('pins').addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-pinsave]');
+    if (!btn || !base || pinSaving) return;
+    const slug = btn.dataset.pinsave;
+    const pin = pinDraft[slug] ?? '';
+    if (pin.length !== 0 && pin.length !== 4) { toast('PIN must be 4 digits or blank'); return; }
+    if (!publish(TOPIC_SET, JSON.stringify({ pins: { [slug]: pin } }))) return;
+    pinSaving = { slug, timer: setTimeout(() => {
+      pinSaving = null; renderPins();
+      toast("The panel didn't confirm. Is it online?");
+    }, 8000) };
+    renderPins();
+  });
 
   $('groups').addEventListener('click', (e) => {
     if (!base || saving || adding) return;
@@ -719,6 +785,7 @@
       v: 1,
       customSlotsFree: 8,
       kids: DEMO_KIDS.map(([slug, name]) => ({ slug, name })),
+      pins: Object.fromEntries(DEMO_KIDS.map(([slug]) => [slug, ''])),
       jobs: DEMO_JOBS.map(([id, label, cat]) => ({
         id, label, cat, required: true, custom: false, kids: DEMO_KIDS.map((k) => k[0]),
       })),
@@ -740,6 +807,9 @@
         for (const j of demoCfg.jobs) {
           if (msg.jobs[j.id]) { j.kids = msg.jobs[j.id].kids; j.required = msg.jobs[j.id].required; }
         }
+      }
+      if (msg.pins && typeof msg.pins === 'object') {
+        demoCfg.pins = { ...(demoCfg.pins || {}), ...msg.pins };
       }
       if (msg.add && msg.add.label && demoSlotsFree() > 0) {
         let n = 0;

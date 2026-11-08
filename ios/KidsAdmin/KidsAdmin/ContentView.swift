@@ -14,6 +14,8 @@ struct ContentView: View {
                 .tabItem { Label("Behaviour", systemImage: "star.bubble") }
             CatalogueView()
                 .tabItem { Label("Jobs", systemImage: "checklist") }
+            PinsView()
+                .tabItem { Label("PINs", systemImage: "lock.fill") }
             WebAdminView()
                 .tabItem { Label("Website", systemImage: "safari") }
             BleJobsView()

@@ -26,6 +26,7 @@ private:
     Home,
     Kid,
     NotDone,
+    Pin,
   };
 
   // Sub-modes while ScreenKind::Idle (prize station)
@@ -60,6 +61,12 @@ private:
   lv_obj_t *screen_kid_ = nullptr;
   lv_obj_t *screen_not_done_ = nullptr;
   lv_obj_t *screen_doer_ = nullptr;
+  lv_obj_t *screen_pin_ = nullptr;
+  lv_obj_t *pin_title_ = nullptr;
+  lv_obj_t *pin_dots_ = nullptr;
+  lv_obj_t *pin_hint_ = nullptr;
+  size_t pin_kid_ = 0;
+  char pin_entry_[5]{};
 
   // Prize idle layers
   lv_obj_t *ad_layer_ = nullptr;
@@ -114,6 +121,7 @@ private:
   void buildKidScaffold();
   void buildNotDoneScaffold();
   void buildDoerPicker();
+  void buildPinPad();
   void rebuildJobList();
   void rebuildNotDoneList();
   void updateJobRow(size_t job);
@@ -122,6 +130,10 @@ private:
   void updateLeftoverHomeButton();
   void styleTab(lv_obj_t *btn, bool active, uint32_t accent);
   void showDoerPicker(size_t owner, size_t job);
+  void showPinPad(size_t kid);
+  void refreshPinDots();
+  void pinDigit(char d);
+  void pinClear();
   void completeLeftover(size_t doer);
   void applyBacklightForScreen();
   bool isActiveSession() const;
@@ -148,6 +160,9 @@ private:
   static void onKidCard(lv_event_t *e);
   static void onNotDoneCard(lv_event_t *e);
   static void onBackHome(lv_event_t *e);
+  static void onPinDigit(lv_event_t *e);
+  static void onPinClear(lv_event_t *e);
+  static void onPinCancel(lv_event_t *e);
   static void onTabExpect(lv_event_t *e);
   static void onTabJobs(lv_event_t *e);
   static void onDone(lv_event_t *e);
