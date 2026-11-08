@@ -3,6 +3,10 @@
 # restart HA. Requires the Mosquitto add-on already linked to HA.
 #
 # Slugs: xavier, presley, jax, banx, hazel
+#
+# Internet unlock is driven by MikroTik IoT MQTT directly
+# (see examples/mikrotik-kids-control.rsc). HA only shows status + notifies.
+# Do NOT also call MikroTik from HA or you will double-toggle.
 
 mqtt:
   binary_sensor:
@@ -145,6 +149,8 @@ mqtt:
       icon: mdi:shield-key
 
 # —— Notify when something interesting happens ——
+# (MikroTik already pause/resumes Kid Control from kids/{slug}/internet —
+# these automations are status/notify only.)
 automation:
   - id: kids_panel_offline
     alias: "Kids panel went offline"
@@ -154,7 +160,7 @@ automation:
         to: "off"
         for: "00:02:00"
     action:
-      - service: notify.persistent_notification
+      - service: notify.notify
         data:
           title: "Kids panel"
           message: "Panel has been offline for 2 minutes"
@@ -172,12 +178,13 @@ automation:
           - binary_sensor.hazel_internet
           - binary_sensor.common_internet
     action:
-      - service: notify.persistent_notification
+      - service: notify.notify
         data:
           title: "Kids internet"
           message: >
             {{ trigger.to_state.name }} is now
             {{ 'ON' if trigger.to_state.state == 'on' else 'OFF' }}
+            (MikroTik Kid Control should already match via IoT MQTT)
 
   - id: kids_rewards_help_event
     alias: "Kids — someone helped (leftover jobs)"
@@ -220,6 +227,19 @@ automation:
           message: >
             {{ trigger.payload_json.kid }} —
             {{ trigger.payload_json.subtitle | default(trigger.payload_json.message) }}
+
+  # Optional: panel already resets daily at DAILY_RESET_HOUR (default 03:00).
+  - id: kids_jobs_morning_reset
+    alias: "Kids jobs — morning reset (optional HA)"
+    trigger:
+      - platform: time
+        at: "05:30:00"
+    action:
+      - service: mqtt.publish
+        data:
+          topic: kids/cmd/reset_all
+          payload: "reset"
+          retain: false
 
 # Optional Lovelace card (paste into a dashboard as Manual card YAML):
 #
