@@ -1,0 +1,4 @@
+{
+  "platformio-ide.defaultToolbarEnv": "ws7",
+  "platformio-ide.autoCloseSerialMonitors": true
+}
