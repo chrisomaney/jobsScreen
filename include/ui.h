@@ -41,6 +41,8 @@ private:
   IdleMode idle_mode_ = IdleMode::Ads;
   uint32_t seen_revision_ = 0;
   uint32_t seen_config_revision_ = 0;
+  bool ui_sync_pending_ = false;  // wait until MQTT Save echo finishes
+  bool kid_list_stale_ = false;   // rebuild on next showKidPage after remote Save
   uint32_t last_done_ms_[JOB_COUNT]{};
   uint32_t last_leftover_ms_ = 0;
   size_t ad_index_ = 0;
@@ -135,6 +137,9 @@ private:
   void showPrizeSplashFromState();
   void buildMessageOverlay();
   void refreshMessageOverlay();
+  void loadScreen(lv_obj_t *screen);
+  void pinActiveScreen();
+  void syncAfterRemoteSave();
 
   static void onLetsGo(lv_event_t *e);
   static void onWantPrize(lv_event_t *e);

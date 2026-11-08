@@ -2,7 +2,7 @@
 # Paste under configuration.yaml (or a package), then reload MQTT entities /
 # restart HA. Requires the Mosquitto add-on already linked to HA.
 #
-# Slugs: xavier, presley, jax, banx, hazel
+# Slugs: xavier, presley, jax, banx, hazel, woomba, wilma
 
 mqtt:
   binary_sensor:
@@ -44,6 +44,18 @@ mqtt:
       payload_on: "on"
       payload_off: "off"
       icon: mdi:wifi
+    - name: "Woomba Internet"
+      unique_id: kids_chris_internet
+      state_topic: "kids/woomba/internet"
+      payload_on: "on"
+      payload_off: "off"
+      icon: mdi:wifi
+    - name: "Wilma Internet"
+      unique_id: kids_stacy_internet
+      state_topic: "kids/wilma/internet"
+      payload_on: "on"
+      payload_off: "off"
+      icon: mdi:wifi
 
     - name: "Common Internet"
       unique_id: kids_common_internet
@@ -77,6 +89,16 @@ mqtt:
     - name: "Hazel Points"
       unique_id: kids_hazel_points
       state_topic: "kids/hazel/rewards/tally"
+      unit_of_measurement: "pts"
+      icon: mdi:star-circle
+    - name: "Woomba Points"
+      unique_id: kids_chris_points
+      state_topic: "kids/woomba/rewards/tally"
+      unit_of_measurement: "pts"
+      icon: mdi:star-circle
+    - name: "Wilma Points"
+      unique_id: kids_stacy_points
+      state_topic: "kids/wilma/rewards/tally"
       unit_of_measurement: "pts"
       icon: mdi:star-circle
 
@@ -116,6 +138,20 @@ mqtt:
       unit_of_measurement: "%"
       json_attributes_topic: "kids/hazel/progress"
       icon: mdi:progress-check
+    - name: "Woomba Jobs %"
+      unique_id: kids_chris_progress
+      state_topic: "kids/woomba/progress"
+      value_template: "{{ value_json.pct }}"
+      unit_of_measurement: "%"
+      json_attributes_topic: "kids/woomba/progress"
+      icon: mdi:progress-check
+    - name: "Wilma Jobs %"
+      unique_id: kids_stacy_progress
+      state_topic: "kids/wilma/progress"
+      value_template: "{{ value_json.pct }}"
+      unit_of_measurement: "%"
+      json_attributes_topic: "kids/wilma/progress"
+      icon: mdi:progress-check
 
     # —— Override mode (auto / on / off) from progress JSON ——
     - name: "Xavier Internet Override"
@@ -141,6 +177,16 @@ mqtt:
     - name: "Hazel Internet Override"
       unique_id: kids_hazel_override
       state_topic: "kids/hazel/progress"
+      value_template: "{{ value_json.override | default('auto') }}"
+      icon: mdi:shield-key
+    - name: "Woomba Internet Override"
+      unique_id: kids_chris_override
+      state_topic: "kids/woomba/progress"
+      value_template: "{{ value_json.override | default('auto') }}"
+      icon: mdi:shield-key
+    - name: "Wilma Internet Override"
+      unique_id: kids_stacy_override
+      state_topic: "kids/wilma/progress"
       value_template: "{{ value_json.override | default('auto') }}"
       icon: mdi:shield-key
 
@@ -170,6 +216,8 @@ automation:
           - binary_sensor.jax_internet
           - binary_sensor.banx_internet
           - binary_sensor.hazel_internet
+          - binary_sensor.chris_internet
+          - binary_sensor.stacy_internet
           - binary_sensor.common_internet
     action:
       - service: notify.persistent_notification
@@ -242,4 +290,10 @@ automation:
 #   - binary_sensor.hazel_internet
 #   - sensor.hazel_jobs
 #   - sensor.hazel_points
+#   - binary_sensor.chris_internet
+#   - sensor.chris_jobs
+#   - sensor.chris_points
+#   - binary_sensor.stacy_internet
+#   - sensor.stacy_jobs
+#   - sensor.stacy_points
 #   - binary_sensor.common_internet

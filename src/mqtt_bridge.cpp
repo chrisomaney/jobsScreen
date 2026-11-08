@@ -283,46 +283,45 @@ void MqttBridge::handleMessage(char *topic, byte *payload, unsigned int length) 
 
 bool MqttBridge::processDeferredApplies() {
   // One heavy apply per loop() so LVGL can paint between Saves.
+  // Never publishConfig()/catalog/rules in this same slice — that MQTT + NVS
+  // combo is what freezes/tears the RGB panel. Queue echo for pumpPublish().
   if (pending_config_apply_) {
     pending_config_apply_ = false;
     if (state_->applyConfigJson(pending_config_buf_, pending_config_len_)) {
       Serial.println("[mqtt] job config updated from web app");
-      // Echo config/state immediately so the app confirms Save. Summaries later.
-      publishConfig();
-      pending_publish_summaries_ = true;
     } else {
-      publishConfig();  // still echo so the web app can clear its "saving" spinner
+      Serial.println("[mqtt] job config apply failed — still echoing state");
     }
+    pending_publish_config_ = true;
+    pending_publish_summaries_ = true;
     return true;
   }
 
   if (pending_catalog_apply_) {
     pending_catalog_apply_ = false;
     if (state_->setCatalogFromJson(pending_catalog_buf_)) {
-      publishCatalog();  // immediate confirm
       Serial.println("[mqtt] prize catalog updated");
     }
+    pending_publish_catalog_ = true;
     return true;
   }
 
   if (pending_rules_apply_ && rewards_) {
     pending_rules_apply_ = false;
     if (rewards_->applyRulesJson(pending_rules_buf_)) {
-      publishRules();  // immediate confirm
       Serial.println("[mqtt] reward rules updated");
     }
+    pending_publish_rules_ = true;
     return true;
   }
 
   if (pending_net_sched_apply_) {
     pending_net_sched_apply_ = false;
     if (state_->applyInternetSchedulesJson(pending_net_sched_buf_)) {
-      publishInternetSchedules();  // immediate confirm
       pending_publish_summaries_ = true;  // internet may flip
       Serial.println("[mqtt] internet schedules updated");
-    } else {
-      publishInternetSchedules();
     }
+    pending_publish_net_sched_ = true;
     return true;
   }
   return false;
