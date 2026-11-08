@@ -285,7 +285,8 @@ void AppUi::buildIdle() {
   lv_obj_set_flex_flow(score_row_, LV_FLEX_FLOW_ROW);
   lv_obj_set_flex_align(score_row_, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
-  const int chip_w = 148;
+  // Shrink chips as kids are added so seven still fit on one row.
+  const int chip_w = (LCD_H_RES - 40) / static_cast<int>(KID_COUNT) - 4;
   for (size_t i = 0; i < KID_COUNT; ++i) {
     score_chips_[i] = lv_obj_create(score_row_);
     lv_obj_set_size(score_chips_[i], chip_w, 56);
@@ -317,16 +318,16 @@ void AppUi::buildIdle() {
 
   const int cols = 3;
   const int btn_w = 230;
-  const int btn_h = 96;
+  const int btn_h = 86;
   const int gap_x = 18;
-  const int gap_y = 14;
+  const int gap_y = 10;
   const int start_x = (LCD_H_RES - (cols * btn_w + (cols - 1) * gap_x)) / 2;
   for (size_t i = 0; i < KID_COUNT; ++i) {
     kid_btns_[i] = lv_btn_create(picker_layer_);
     lv_obj_set_size(kid_btns_[i], btn_w, btn_h);
     const int row = static_cast<int>(i) / cols;
     const int col = static_cast<int>(i) % cols;
-    lv_obj_set_pos(kid_btns_[i], start_x + col * (btn_w + gap_x), 90 + row * (btn_h + gap_y));
+    lv_obj_set_pos(kid_btns_[i], start_x + col * (btn_w + gap_x), 84 + row * (btn_h + gap_y));
     style_glass_btn(kid_btns_[i]);
     lv_obj_set_style_border_width(kid_btns_[i], 3, 0);
     lv_obj_set_style_border_color(kid_btns_[i], c(KIDS[i].color), 0);
@@ -420,14 +421,14 @@ void AppUi::buildHome() {
   clock_label_ = make_label(screen_home_, "", &lv_font_montserrat_14, COL_MUTED);
   lv_obj_align(clock_label_, LV_ALIGN_TOP_RIGHT, -16, 46);
 
-  // 3-across grid so five kids fit above the leftover bar on 800×480
+  // 3-across grid — seven kids = 3 rows; keep cards short so leftover bar fits.
   const int cols = 3;
   const int card_w = 236;
-  const int card_h = 110;
+  const int card_h = 88;
   const int gap_x = 14;
-  const int gap_y = 12;
+  const int gap_y = 8;
   const int origin_x = 32;
-  const int origin_y = 74;
+  const int origin_y = 68;
 
   for (size_t i = 0; i < KID_COUNT; ++i) {
     const int col = static_cast<int>(i % cols);
@@ -448,8 +449,8 @@ void AppUi::buildHome() {
   }
 
   leftover_btn_ = lv_btn_create(screen_home_);
-  lv_obj_set_size(leftover_btn_, 736, 72);
-  lv_obj_align(leftover_btn_, LV_ALIGN_BOTTOM_MID, 0, -14);
+  lv_obj_set_size(leftover_btn_, 736, 60);
+  lv_obj_align(leftover_btn_, LV_ALIGN_BOTTOM_MID, 0, -10);
   style_glass_btn(leftover_btn_);
   lv_obj_set_style_radius(leftover_btn_, 14, 0);
   lv_obj_add_event_cb(leftover_btn_, onNotDoneCard, LV_EVENT_CLICKED, nullptr);
@@ -586,14 +587,14 @@ void AppUi::buildDoerPicker() {
   doer_prompt_ = make_label(screen_doer_, "Who did this job?", &lv_font_montserrat_24, COL_TEXT);
   lv_obj_align(doer_prompt_, LV_ALIGN_TOP_MID, 0, 40);
 
-  // 3-across so five names fit with room for Cancel
+  // 3-across — seven names = 3 rows with room for Cancel
   const int cols = 3;
   const int btn_w = 230;
-  const int btn_h = 96;
+  const int btn_h = 86;
   const int gap_x = 16;
-  const int gap_y = 14;
+  const int gap_y = 10;
   const int origin_x = 47;
-  const int origin_y = 100;
+  const int origin_y = 88;
   for (size_t i = 0; i < KID_COUNT; ++i) {
     const int col = static_cast<int>(i % cols);
     const int row = static_cast<int>(i / cols);

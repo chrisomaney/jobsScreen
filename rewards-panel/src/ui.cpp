@@ -170,7 +170,7 @@ void AppUi::build() {
   lv_obj_set_flex_align(score_row_, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
   lv_obj_set_style_pad_column(score_row_, 6, 0);
 
-  const int chip_w = 148;
+  const int chip_w = (LCD_H_RES - 40) / static_cast<int>(KID_COUNT) - 4;
   for (size_t i = 0; i < KID_COUNT; ++i) {
     score_chips_[i] = lv_obj_create(score_row_);
     lv_obj_set_size(score_chips_[i], chip_w, 60);
@@ -203,11 +203,11 @@ void AppUi::build() {
 
   const int cols = 3;
   const int btn_w = 230;
-  const int btn_h = 96;
+  const int btn_h = 86;
   const int gap_x = 18;
-  const int gap_y = 14;
+  const int gap_y = 10;
   const int start_x = (LCD_H_RES - (cols * btn_w + (cols - 1) * gap_x)) / 2;
-  const int start_y = 90;
+  const int start_y = 84;
   for (size_t i = 0; i < KID_COUNT; ++i) {
     kid_btns_[i] = lv_btn_create(picker_layer_);
     lv_obj_set_size(kid_btns_[i], btn_w, btn_h);
