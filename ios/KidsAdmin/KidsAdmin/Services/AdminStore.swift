@@ -13,6 +13,8 @@ final class AdminStore: ObservableObject {
     @Published var customSlotsFree: Int? = nil
     @Published var commonInternetOn = false
     @Published var internetSchedules: [InternetSchedule] = []
+    /// Kid slug waiting for parent Approve/Decline (drives in-app alert).
+    @Published var pendingUnlockSlug: String?
     @Published var lastError: String?
     @Published var bleReady = false
     @Published var bleScanning = false
@@ -104,6 +106,7 @@ final class AdminStore: ObservableObject {
                 topics.append("kids/\(kid.slug)/progress")
                 topics.append("kids/\(kid.slug)/rewards/tally")
                 topics.append("kids/\(kid.slug)/internet")
+                topics.append("kids/\(kid.slug)/internet/request")
             }
             self.mqtt.subscribe(topics)
         }
@@ -169,6 +172,21 @@ final class AdminStore: ObservableObject {
             if mode == .on { s.internetOn = true }
             if mode == .off { s.internetOn = false }
             status[slug] = s
+        }
+    }
+
+    func decideUnlock(slug: String, approve: Bool) {
+        mqtt.publish(
+            "kids/\(slug)/internet/decision",
+            payload: approve ? "approve" : "decline",
+            retain: false
+        )
+        var s = status[slug] ?? KidLiveStatus()
+        s.unlock = approve ? .approved : .declined
+        if approve { s.internetOn = true }
+        status[slug] = s
+        if pendingUnlockSlug == slug {
+            pendingUnlockSlug = nil
         }
     }
 
@@ -327,9 +345,28 @@ final class AdminStore: ObservableObject {
                 s.internetOn = (text == "on")
                 status[kid.slug] = s
             }
+            if topic == "kids/\(kid.slug)/internet/request" {
+                parseUnlockRequest(slug: kid.slug, data: data)
+            }
             if topic == "kids/\(kid.slug)/progress" {
                 parseProgress(slug: kid.slug, data: data)
             }
+        }
+    }
+
+    private func parseUnlockRequest(slug: String, data: Data) {
+        guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+        let raw = (obj["status"] as? String) ?? "none"
+        let unlock = UnlockStatus(rawValue: raw) ?? .none
+        var s = status[slug] ?? KidLiveStatus()
+        s.unlock = unlock
+        if let internet = obj["internet"] as? Bool { s.internetOn = internet }
+        if let jobsReady = obj["jobs_ready"] as? Bool { s.jobsReady = jobsReady }
+        status[slug] = s
+        if unlock == .pending {
+            pendingUnlockSlug = slug
+        } else if pendingUnlockSlug == slug {
+            pendingUnlockSlug = nil
         }
     }
 
@@ -343,6 +380,14 @@ final class AdminStore: ObservableObject {
         if let pct = obj["pct"] as? Int { s.pct = pct }
         if let ov = obj["override"] as? String, let mode = InternetMode(rawValue: ov) {
             s.override = mode
+        }
+        if let u = obj["unlock"] as? String, let unlock = UnlockStatus(rawValue: u) {
+            s.unlock = unlock
+            if unlock == .pending {
+                pendingUnlockSlug = slug
+            } else if pendingUnlockSlug == slug {
+                pendingUnlockSlug = nil
+            }
         }
         status[slug] = s
     }

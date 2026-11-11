@@ -25,12 +25,29 @@ enum InternetMode: String, CaseIterable, Identifiable {
     }
 }
 
+enum UnlockStatus: String, Equatable {
+    case none
+    case pending
+    case approved
+    case declined
+
+    var title: String {
+        switch self {
+        case .none: return "—"
+        case .pending: return "Needs approval"
+        case .approved: return "Approved"
+        case .declined: return "Declined"
+        }
+    }
+}
+
 struct KidLiveStatus: Equatable {
     var tally: Int = 0
     var internetOn: Bool = false
     var jobsReady: Bool = false
     var scheduledOff: Bool = false
     var override: InternetMode = .auto
+    var unlock: UnlockStatus = .none
     var pct: Int = 0
 }
 

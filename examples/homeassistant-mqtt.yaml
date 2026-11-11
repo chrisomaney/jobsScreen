@@ -269,6 +269,28 @@ automation:
             {{ trigger.payload_json.kid }} —
             {{ trigger.payload_json.subtitle | default(trigger.payload_json.message) }}
 
+  # Phone push when a kid finishes required jobs and needs your Approve.
+  # Swap notify.notify for your mobile app notify service.
+  - id: kids_unlock_pending
+    alias: "Kids — unlock needs approval"
+    trigger:
+      - platform: mqtt
+        topic: kids/+/internet/request
+    condition:
+      - condition: template
+        value_template: "{{ trigger.payload_json.status == 'pending' }}"
+    action:
+      - service: notify.notify
+        data:
+          title: "{{ trigger.payload_json.name }} wants internet"
+          message: >
+            Jobs look done ({{ trigger.payload_json.required_done }}/{{ trigger.payload_json.required_total }}).
+            Open Kids Admin → Approve or Decline.
+      - service: notify.persistent_notification
+        data:
+          title: "{{ trigger.payload_json.name }} wants internet"
+          message: "Approve in Kids Admin (or MQTT kids/{{ trigger.payload_json.kid }}/internet/decision)."
+
 # Optional Lovelace card (paste into a dashboard as Manual card YAML):
 #
 # type: entities

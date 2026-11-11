@@ -101,6 +101,10 @@ On boot the panel prints `[boot] reset reason: ...` (e.g. `PANIC`, `interrupt wa
 | `kids/panel/status` | `online` / `offline` | LWT |
 | `kids/config/state` | JSON | retained — kids, jobs, who has each job, “needed for internet” flags (read by the web app) |
 | `kids/config/set` | JSON | from the web app — assign `{"jobs":{…}}`, add `{"add":{"label","cat":"expectation\|paid",…}}`, or remove `{"remove":["custom_0"]}` |
+| `kids/{slug}/internet/request` | JSON | retained — `{status:none\|pending\|approved\|declined,…}` when Auto unlock needs parent Approve |
+| `kids/{slug}/internet/decision` | `approve` / `decline` | from Kids Admin — unlocks or keeps internet off for today |
+
+Auto mode: required jobs done → **pending** (internet still off) → parent Approves in the app → `kids/{slug}/internet` goes `on`. Force On still bypasses. Decline stays off until jobs are undone and redone.
 
 Slugs: `xavier`, `presley`, `jax`, `banx`, `hazel`, `woomba`, `wilma`.
 
@@ -127,6 +131,8 @@ topic read kids/#
 topic write kids/config/set
 topic write kids/cmd/#
 topic write kids/+/cmd/#
+topic write kids/+/internet/set
+topic write kids/+/internet/decision
 ```
 
 With the Mosquitto add-on, enable `customize` (folder `mosquitto`), put `acl_file /share/mosquitto/accesscontrollist` in `/share/mosquitto/acl.conf`, and the rules above in `/share/mosquitto/accesscontrollist`.
@@ -153,6 +159,19 @@ automation:
       - service: notify.persistent_notification
         data:
           message: "{{ trigger.payload_json.doer_name }} helped with {{ trigger.payload_json.owner_name }}'s {{ trigger.payload_json.job_label }}"
+
+  - alias: "Kid unlock needs approval"
+    trigger:
+      - platform: mqtt
+        topic: kids/+/internet/request
+    condition:
+      - condition: template
+        value_template: "{{ trigger.payload_json.status == 'pending' }}"
+    action:
+      - service: notify.notify   # your phone notify service
+        data:
+          title: "{{ trigger.payload_json.name }} wants internet"
+          message: "Open Kids Admin to Approve or Decline"
 ```
 
 See `examples/homeassistant-mqtt.yaml` for more.

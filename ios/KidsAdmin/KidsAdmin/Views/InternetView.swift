@@ -20,7 +20,7 @@ struct InternetView: View {
 
     private var introSection: some View {
         Section {
-            Text("Force On / Off overrides jobs. Auto follows required jobs. Schedules turn internet off for chosen kids between Off→On times (Force On still wins for emergencies).")
+            Text("Force On / Off overrides jobs. Auto waits for your Approve after required jobs are done. Schedules turn internet off for chosen kids between Off→On times (Force On still wins for emergencies).")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .onTapGesture { Keyboard.dismiss() }
@@ -36,6 +36,9 @@ struct InternetView: View {
                     connected: admin.connected,
                     onModeChange: { mode in
                         admin.setInternet(slug: kid.slug, mode: mode)
+                    },
+                    onDecide: { approve in
+                        admin.decideUnlock(slug: kid.slug, approve: approve)
                     }
                 )
             }
@@ -124,6 +127,7 @@ private struct KidInternetRow: View {
     let live: KidLiveStatus
     let connected: Bool
     let onModeChange: (InternetMode) -> Void
+    let onDecide: (Bool) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -131,6 +135,15 @@ private struct KidInternetRow: View {
             Text(statusLine)
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            if live.unlock == .pending {
+                HStack {
+                    Button("Approve internet") { onDecide(true) }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(!connected)
+                    Button("Decline", role: .destructive) { onDecide(false) }
+                        .disabled(!connected)
+                }
+            }
             Picker("Override", selection: modeBinding) {
                 ForEach(InternetMode.allCases) { mode in
                     Text(mode.title).tag(mode)
@@ -147,11 +160,23 @@ private struct KidInternetRow: View {
             Circle().fill(kid.color).frame(width: 12, height: 12)
             Text(kid.name).font(.headline)
             Spacer()
+            if live.unlock == .pending {
+                pendingBadge
+            }
             if live.scheduledOff {
                 bedtimeBadge
             }
             onOffBadge
         }
+    }
+
+    private var pendingBadge: some View {
+        Text("APPROVE?")
+            .font(.caption2.weight(.bold))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(Color.yellow.opacity(0.35))
+            .clipShape(Capsule())
     }
 
     private var bedtimeBadge: some View {
@@ -182,6 +207,7 @@ private struct KidInternetRow: View {
     private var statusLine: String {
         var parts = ["Override \(live.override.title)"]
         parts.append(live.jobsReady ? "jobs ready" : "jobs not ready")
+        if live.unlock != .none { parts.append(live.unlock.title) }
         if live.scheduledOff { parts.append("schedule off") }
         parts.append("\(live.pct)%")
         return parts.joined(separator: " · ")

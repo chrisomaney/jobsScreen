@@ -905,9 +905,18 @@ void AppUi::updateKidHeader() {
   lv_label_set_text(progress_label_, buf);
 
   const bool ready = state_->internetEffective(active_kid_);
+  const auto unlock = state_->unlockApproval(active_kid_);
   lv_obj_set_style_bg_color(internet_badge_, c(ready ? COL_GLASS : COL_BTN), 0);
   lv_obj_set_style_border_color(internet_badge_, c(ready ? COL_TEXT : COL_BORDER), 0);
-  lv_label_set_text(badge_label_, ready ? "Internet ON" : "Internet OFF");
+  if (ready) {
+    lv_label_set_text(badge_label_, "Internet ON");
+  } else if (unlock == JobState::UnlockApproval::Pending && state_->internetReady(active_kid_)) {
+    lv_label_set_text(badge_label_, "Waiting for parent");
+  } else if (unlock == JobState::UnlockApproval::Declined) {
+    lv_label_set_text(badge_label_, "Parent said no");
+  } else {
+    lv_label_set_text(badge_label_, "Internet OFF");
+  }
 }
 
 void AppUi::rebuildNotDoneList() {
