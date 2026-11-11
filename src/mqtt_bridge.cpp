@@ -47,6 +47,14 @@ String MqttBridge::topicRewardTally(size_t kid) const {
   return String(MQTT_BASE) + "/" + KIDS[kid].slug + "/rewards/tally";
 }
 
+String MqttBridge::topicUnlockRequest(size_t kid) const {
+  return String(MQTT_BASE) + "/" + KIDS[kid].slug + "/internet/request";
+}
+
+String MqttBridge::topicUnlockDecision(size_t kid) const {
+  return String(MQTT_BASE) + "/" + KIDS[kid].slug + "/internet/decision";
+}
+
 void MqttBridge::queuePayload(char *dest, size_t *dest_len, bool *flag, const byte *payload,
                               unsigned int length) {
   if (!dest || !dest_len || !flag) {
@@ -104,6 +112,7 @@ void MqttBridge::ensureConnected() {
   for (size_t k = 0; k < KID_COUNT; ++k) {
     client_.subscribe(topicRewardTally(k).c_str());
     client_.subscribe((topicInternet(k) + "/set").c_str());
+    client_.subscribe(topicUnlockDecision(k).c_str());
   }
   // Shared MikroTik profile — admin can force on/off; panel does not auto-manage it.
   client_.subscribe((String(MQTT_BASE) + "/common/internet/set").c_str());
@@ -145,6 +154,46 @@ void MqttBridge::handleMessage(char *topic, byte *payload, unsigned int length) 
       state_->setInternetOverride(k, mode);
       pending_publish_summaries_ = true;
       Serial.printf("[mqtt] internet override %s = %s\n", KIDS[k].slug, body.c_str());
+      return;
+    }
+    // Parent unlock gate: kids/{slug}/internet/decision  approve|decline
+    if (t == topicUnlockDecision(k)) {
+      String body;
+      body.reserve(length + 1);
+      for (unsigned int i = 0; i < length; ++i) {
+        body += static_cast<char>(payload[i]);
+      }
+      body.trim();
+      bool approve = false;
+      bool known = false;
+      if (body.startsWith("{")) {
+        JsonDocument doc;
+        if (deserializeJson(doc, body) == DeserializationError::Ok) {
+          String d = doc["decision"].is<const char *>() ? String(doc["decision"].as<const char *>()) : "";
+          d.toLowerCase();
+          if (d == "approve" || d == "approved" || d == "yes") {
+            approve = true;
+            known = true;
+          } else if (d == "decline" || d == "declined" || d == "no" || d == "deny") {
+            approve = false;
+            known = true;
+          }
+        }
+      } else {
+        body.toLowerCase();
+        if (body == "approve" || body == "approved" || body == "yes" || body == "on") {
+          approve = true;
+          known = true;
+        } else if (body == "decline" || body == "declined" || body == "no" || body == "deny" ||
+                   body == "off") {
+          approve = false;
+          known = true;
+        }
+      }
+      if (known && state_->decideUnlock(k, approve)) {
+        pending_publish_summaries_ = true;
+        Serial.printf("[mqtt] unlock %s = %s\n", KIDS[k].slug, approve ? "approve" : "decline");
+      }
       return;
     }
   }
@@ -343,6 +392,23 @@ void MqttBridge::publishKidInternet(size_t kid) {
   client_.publish(topicInternet(kid).c_str(), ready ? "on" : "off", true);
 }
 
+void MqttBridge::publishUnlockRequest(size_t kid) {
+  if (!client_.connected() || kid >= KID_COUNT) {
+    return;
+  }
+  JsonDocument doc;
+  doc["status"] = state_->unlockApprovalLabel(kid);
+  doc["kid"] = KIDS[kid].slug;
+  doc["name"] = KIDS[kid].name;
+  doc["required_done"] = state_->requiredDoneCount(kid);
+  doc["required_total"] = state_->requiredTotal(kid);
+  doc["jobs_ready"] = state_->internetReady(kid);
+  doc["internet"] = state_->internetEffective(kid);
+  String json;
+  serializeJson(doc, json);
+  client_.publish(topicUnlockRequest(kid).c_str(), json.c_str(), true);
+}
+
 void MqttBridge::publishKidProgress(size_t kid) {
   if (!client_.connected() || kid >= KID_COUNT) {
     return;
@@ -359,6 +425,7 @@ void MqttBridge::publishKidProgress(size_t kid) {
   doc["pct"] = req_total ? (req_done * 100) / req_total : 100;
   doc["internet"] = ready;
   doc["jobs_ready"] = state_->internetReady(kid);
+  doc["unlock"] = state_->unlockApprovalLabel(kid);
   doc["scheduled_off"] = state_->internetScheduledOff(kid);
   const auto ov = state_->internetOverride(kid);
   doc["override"] = ov == JobState::InternetOverride::On    ? "on"
@@ -375,6 +442,7 @@ void MqttBridge::publishKidProgress(size_t kid) {
 void MqttBridge::publishKidSummary(size_t kid) {
   publishKidInternet(kid);
   publishKidProgress(kid);
+  publishUnlockRequest(kid);
   publishRewardTally(kid);
 }
 
@@ -699,17 +767,19 @@ void MqttBridge::pumpPublish() {
       }
 
       case PubPhase::Summaries:
-        // One MQTT message per slice (internet / progress / tally).
+        // One MQTT message per slice (internet / progress / unlock request / tally).
         if (pub_summary_step_ == 0) {
           publishKidInternet(pub_kid_);
         } else if (pub_summary_step_ == 1) {
           publishKidProgress(pub_kid_);
+        } else if (pub_summary_step_ == 2) {
+          publishUnlockRequest(pub_kid_);
         } else {
           publishRewardTally(pub_kid_);
         }
         --budget;
         ++pub_summary_step_;
-        if (pub_summary_step_ >= 3) {
+        if (pub_summary_step_ >= 4) {
           pub_summary_step_ = 0;
           ++pub_kid_;
           if (pub_kid_ >= KID_COUNT) {

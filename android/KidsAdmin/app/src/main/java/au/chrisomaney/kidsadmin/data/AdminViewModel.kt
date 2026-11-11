@@ -24,6 +24,7 @@ data class AdminUiState(
     val expBundle: Int = 0,
     val customSlotsFree: Int? = null,
     val commonInternetOn: Boolean = false,
+    val pendingUnlockSlug: String? = null,
     val banner: String? = null,
 )
 
@@ -86,6 +87,7 @@ class AdminViewModel(app: Application) : AndroidViewModel(app) {
             topics += "kids/${kid.slug}/progress"
             topics += "kids/${kid.slug}/rewards/tally"
             topics += "kids/${kid.slug}/internet"
+            topics += "kids/${kid.slug}/internet/request"
         }
         mqtt.subscribe(topics)
     }
@@ -105,6 +107,22 @@ class AdminViewModel(app: Application) : AndroidViewModel(app) {
                 },
             )
             state.copy(status = state.status + (slug to next))
+        }
+    }
+
+    fun decideUnlock(slug: String, approve: Boolean) {
+        mqtt.publish("kids/$slug/internet/decision", if (approve) "approve" else "decline")
+        _ui.update { state ->
+            val cur = state.status[slug] ?: KidLiveStatus()
+            val next = cur.copy(
+                unlock = if (approve) UnlockStatus.Approved else UnlockStatus.Declined,
+                internetOn = if (approve) true else cur.internetOn,
+            )
+            state.copy(
+                status = state.status + (slug to next),
+                pendingUnlockSlug = if (state.pendingUnlockSlug == slug) null else state.pendingUnlockSlug,
+                banner = if (approve) "Internet approved" else "Internet declined",
+            )
         }
     }
 
@@ -228,10 +246,41 @@ class AdminViewModel(app: Application) : AndroidViewModel(app) {
                         }
                         "kids/${kid.slug}/internet" ->
                             patchStatus(kid.slug) { it.copy(internetOn = text == "on") }
+                        "kids/${kid.slug}/internet/request" -> parseUnlockRequest(kid.slug, data)
                         "kids/${kid.slug}/progress" -> parseProgress(kid.slug, data)
                     }
                 }
             }
+        }
+    }
+
+    private fun parseUnlockRequest(slug: String, data: ByteArray) {
+        try {
+            val obj = JSONObject(String(data, Charsets.UTF_8))
+            val unlock = UnlockStatus.from(obj.optString("status", "none"))
+            _ui.update { state ->
+                val cur = state.status[slug] ?: KidLiveStatus()
+                val next = cur.copy(
+                    unlock = unlock,
+                    internetOn = obj.optBoolean("internet", cur.internetOn),
+                    jobsReady = obj.optBoolean("jobs_ready", cur.jobsReady),
+                )
+                state.copy(
+                    status = state.status + (slug to next),
+                    pendingUnlockSlug = when {
+                        unlock == UnlockStatus.Pending -> slug
+                        state.pendingUnlockSlug == slug -> null
+                        else -> state.pendingUnlockSlug
+                    },
+                    banner = if (unlock == UnlockStatus.Pending) {
+                        val name = AdminKids.all.firstOrNull { it.slug == slug }?.name ?: slug
+                        "$name wants internet — approve?"
+                    } else {
+                        state.banner
+                    },
+                )
+            }
+        } catch (_: Exception) {
         }
     }
 
@@ -245,13 +294,24 @@ class AdminViewModel(app: Application) : AndroidViewModel(app) {
     private fun parseProgress(slug: String, data: ByteArray) {
         try {
             val obj = JSONObject(String(data, Charsets.UTF_8))
-            patchStatus(slug) { cur ->
-                cur.copy(
+            val unlock = if (obj.has("unlock")) UnlockStatus.from(obj.optString("unlock")) else null
+            _ui.update { state ->
+                val cur = state.status[slug] ?: KidLiveStatus()
+                val next = cur.copy(
                     tally = obj.optInt("rewards", cur.tally),
                     internetOn = obj.optBoolean("internet", cur.internetOn),
                     jobsReady = obj.optBoolean("jobs_ready", cur.jobsReady),
                     pct = obj.optInt("pct", cur.pct),
                     override = InternetMode.from(obj.optString("override", cur.override.raw)),
+                    unlock = unlock ?: cur.unlock,
+                )
+                state.copy(
+                    status = state.status + (slug to next),
+                    pendingUnlockSlug = when {
+                        unlock == UnlockStatus.Pending -> slug
+                        unlock != null && state.pendingUnlockSlug == slug -> null
+                        else -> state.pendingUnlockSlug
+                    },
                 )
             }
         } catch (_: Exception) {

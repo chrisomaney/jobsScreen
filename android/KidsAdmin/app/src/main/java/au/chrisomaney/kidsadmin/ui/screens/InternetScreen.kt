@@ -20,9 +20,10 @@ import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier.modifier
+import androidx.compose.ui.Modifier.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -31,6 +32,7 @@ import au.chrisomaney.kidsadmin.data.AdminUiState
 import au.chrisomaney.kidsadmin.data.AdminViewModel
 import au.chrisomaney.kidsadmin.data.InternetMode
 import au.chrisomaney.kidsadmin.data.KidLiveStatus
+import au.chrisomaney.kidsadmin.data.UnlockStatus
 
 @Composable
 fun InternetScreen(state: AdminUiState, vm: AdminViewModel) {
@@ -43,10 +45,38 @@ fun InternetScreen(state: AdminUiState, vm: AdminViewModel) {
     ) {
         Text("Internet", style = MaterialTheme.typography.headlineMedium)
         Text(
-            "Force On / Off overrides jobs. Auto follows required jobs on the panel.",
+            "Force On / Off overrides jobs. Auto waits for your Approve after required jobs are done.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        state.pendingUnlockSlug?.let { slug ->
+            val name = AdminKids.all.firstOrNull { it.slug == slug }?.name ?: slug
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("$name wants internet", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "Required jobs look done. Approve for today, or decline if they skipped the work.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(
+                            onClick = { vm.decideUnlock(slug, true) },
+                            enabled = state.connected,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF34D399),
+                                contentColor = Color(0xFF0B1220),
+                            ),
+                        ) { Text("Approve") }
+                        Button(
+                            onClick = { vm.decideUnlock(slug, false) },
+                            enabled = state.connected,
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFB7185)),
+                        ) { Text("Decline") }
+                        TextButton(onClick = { vm.clearBanner() }) { Text("Later") }
+                    }
+                }
+            }
+        }
         for (kid in AdminKids.all) {
             val live = state.status[kid.slug] ?: KidLiveStatus()
             Card(Modifier.fillMaxWidth()) {
@@ -70,10 +100,28 @@ fun InternetScreen(state: AdminUiState, vm: AdminViewModel) {
                         )
                     }
                     Text(
-                        "Override ${live.override.title} · jobs ${if (live.jobsReady) "ready" else "locked"} · ${live.pct}%",
+                        buildString {
+                            append("Override ${live.override.title}")
+                            append(" · jobs ${if (live.jobsReady) "ready" else "locked"}")
+                            if (live.unlock != UnlockStatus.None) append(" · ${live.unlock.title}")
+                            append(" · ${live.pct}%")
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    if (live.unlock == UnlockStatus.Pending) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(
+                                onClick = { vm.decideUnlock(kid.slug, true) },
+                                enabled = state.connected,
+                            ) { Text("Approve internet") }
+                            Button(
+                                onClick = { vm.decideUnlock(kid.slug, false) },
+                                enabled = state.connected,
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFB7185)),
+                            ) { Text("Decline") }
+                        }
+                    }
                     SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                         InternetMode.entries.forEachIndexed { index, mode ->
                             SegmentedButton(

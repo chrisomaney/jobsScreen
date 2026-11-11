@@ -56,12 +56,21 @@ public:
   size_t requiredDoneCount(size_t kid) const;
   bool internetReady(size_t kid) const;  // based on required jobs only
 
-  // Parent override for MikroTik unlock. Auto = follow internetReady().
+  // Parent override for MikroTik unlock. Auto = follow internetReady() + parent gate.
   enum class InternetOverride : uint8_t { Auto = 0, On = 1, Off = 2 };
   InternetOverride internetOverride(size_t kid) const;
   void setInternetOverride(size_t kid, InternetOverride mode);
+  // Parent must Approve after required jobs are done before Auto unlocks internet.
+  enum class UnlockApproval : uint8_t { None = 0, Pending = 1, Approved = 2, Declined = 3 };
+  UnlockApproval unlockApproval(size_t kid) const;
+  const char *unlockApprovalLabel(size_t kid) const;  // none|pending|approved|declined
+  // Parent decision from admin app. Returns true if state changed.
+  bool decideUnlock(size_t kid, bool approve);
+  // Recompute pending/none from job readiness (call after Done / reset / day roll).
+  bool syncUnlockGate(size_t kid);
   // Effective on/off published to kids/{slug}/internet.
-  // Priority: Force Off → scheduled off (unless Force On) → Force On → jobs Auto.
+  // Priority: Force Off → scheduled off (unless Force On) → Force On →
+  //           Auto needs jobs ready AND parent Approved.
   bool internetEffective(size_t kid) const;
   bool internetScheduledOff(size_t kid) const;
 
@@ -127,6 +136,7 @@ private:
   bool done_[KID_COUNT][JOB_COUNT]{};
   uint32_t rewards_[KID_COUNT]{};
   InternetOverride internet_override_[KID_COUNT]{};
+  UnlockApproval unlock_approval_[KID_COUNT]{};
   NetSchedule net_schedules_[INTERNET_SCHEDULE_MAX]{};
   size_t net_schedule_count_ = 0;
   bool scheduled_off_cache_[KID_COUNT]{};
@@ -137,6 +147,8 @@ private:
   Preferences net_sched_prefs_;
   void loadInternetOverrides();
   void persistInternetOverride(size_t kid);
+  void loadUnlockApprovals();
+  void persistUnlockApproval(size_t kid);
   void loadInternetSchedules();
   void saveInternetSchedules();
   bool scheduleActiveNow(const NetSchedule &s, int hour, int minute, int wday) const;

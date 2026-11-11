@@ -106,8 +106,11 @@ private:
   void publishSummaries();
   void publishKidInternet(size_t kid);
   void publishKidProgress(size_t kid);
+  void publishUnlockRequest(size_t kid);
   String topicJob(size_t kid, size_t job) const;
   String topicInternet(size_t kid) const;
   String topicProgress(size_t kid) const;
   String topicRewardTally(size_t kid) const;
+  String topicUnlockRequest(size_t kid) const;
+  String topicUnlockDecision(size_t kid) const;
 };

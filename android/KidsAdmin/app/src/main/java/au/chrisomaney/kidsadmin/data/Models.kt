@@ -19,11 +19,24 @@ enum class InternetMode(val raw: String, val title: String) {
     }
 }
 
+enum class UnlockStatus(val raw: String, val title: String) {
+    None("none", "—"),
+    Pending("pending", "Needs approval"),
+    Approved("approved", "Approved"),
+    Declined("declined", "Declined");
+
+    companion object {
+        fun from(raw: String?): UnlockStatus =
+            entries.firstOrNull { it.raw == raw } ?: None
+    }
+}
+
 data class KidLiveStatus(
     val tally: Int = 0,
     val internetOn: Boolean = false,
     val jobsReady: Boolean = false,
     val override: InternetMode = InternetMode.Auto,
+    val unlock: UnlockStatus = UnlockStatus.None,
     val pct: Int = 0,
 )
 

@@ -322,6 +322,10 @@ void JobState::begin() {
     savePrizeCatalog();
   }
   loadInternetOverrides();
+  loadUnlockApprovals();
+  for (size_t k = 0; k < KID_COUNT; ++k) {
+    syncUnlockGate(k);
+  }
   loadInternetSchedules();
   job_day_ = prefs_.getUInt("day", 0);
 }
@@ -593,6 +597,8 @@ bool JobState::applyConfigJson(const char *json, size_t len) {
       persist_kid_pending_[k] = false;
       persistKid(k);
     }
+    // Required/assignment edits can flip readiness → pending unlock request.
+    syncUnlockGate(k);
   }
   persist_config_pending_ = false;
   ++config_revision_;
@@ -744,6 +750,7 @@ void JobState::setDone(size_t kid, size_t job, bool done) {
   }
   done_[kid][job] = done;
   persistKid(kid);
+  syncUnlockGate(kid);
   bump();
 }
 
@@ -755,6 +762,7 @@ void JobState::resetKid(size_t kid) {
     done_[kid][j] = false;
   }
   persistKid(kid);
+  syncUnlockGate(kid);
   bump();
 }
 
@@ -764,6 +772,7 @@ void JobState::resetAll() {
       done_[k][j] = false;
     }
     persistKid(k);
+    syncUnlockGate(k);
   }
   bump();
 }
@@ -857,7 +866,70 @@ bool JobState::internetEffective(size_t kid) const {
   if (ov == InternetOverride::On) {
     return true;
   }
-  return internetReady(kid);
+  // Auto: jobs ready is not enough — parent must Approve in the admin app.
+  return internetReady(kid) && unlock_approval_[kid] == UnlockApproval::Approved;
+}
+
+JobState::UnlockApproval JobState::unlockApproval(size_t kid) const {
+  if (kid >= KID_COUNT) {
+    return UnlockApproval::None;
+  }
+  return unlock_approval_[kid];
+}
+
+const char *JobState::unlockApprovalLabel(size_t kid) const {
+  switch (unlockApproval(kid)) {
+    case UnlockApproval::Pending:
+      return "pending";
+    case UnlockApproval::Approved:
+      return "approved";
+    case UnlockApproval::Declined:
+      return "declined";
+    case UnlockApproval::None:
+      return "none";
+  }
+  return "none";
+}
+
+bool JobState::decideUnlock(size_t kid, bool approve) {
+  if (kid >= KID_COUNT) {
+    return false;
+  }
+  if (!internetReady(kid)) {
+    return false;  // nothing to decide until required jobs are done
+  }
+  const UnlockApproval next = approve ? UnlockApproval::Approved : UnlockApproval::Declined;
+  if (unlock_approval_[kid] == next) {
+    return false;
+  }
+  unlock_approval_[kid] = next;
+  persistUnlockApproval(kid);
+  bump();
+  return true;
+}
+
+bool JobState::syncUnlockGate(size_t kid) {
+  if (kid >= KID_COUNT) {
+    return false;
+  }
+  const bool ready = internetReady(kid);
+  UnlockApproval cur = unlock_approval_[kid];
+  UnlockApproval next = cur;
+  if (!ready) {
+    next = UnlockApproval::None;
+  } else if (cur == UnlockApproval::None) {
+    next = UnlockApproval::Pending;
+  } else if (cur == UnlockApproval::Declined) {
+    // Stay declined until jobs flip off then on again (handled by !ready → None).
+    next = UnlockApproval::Declined;
+  }
+  // Approved / Pending while still ready: keep.
+  if (next == cur) {
+    return false;
+  }
+  unlock_approval_[kid] = next;
+  persistUnlockApproval(kid);
+  return true;
 }
 
 void JobState::loadInternetOverrides() {
@@ -874,6 +946,20 @@ void JobState::persistInternetOverride(size_t kid) {
     return;
   }
   net_prefs_.putUChar((String("o") + kid).c_str(), static_cast<uint8_t>(internet_override_[kid]));
+}
+
+void JobState::loadUnlockApprovals() {
+  for (size_t k = 0; k < KID_COUNT; ++k) {
+    const uint8_t v = prefs_.getUChar((String("ug") + k).c_str(), 0);
+    unlock_approval_[k] = v <= 3 ? static_cast<UnlockApproval>(v) : UnlockApproval::None;
+  }
+}
+
+void JobState::persistUnlockApproval(size_t kid) {
+  if (kid >= KID_COUNT) {
+    return;
+  }
+  prefs_.putUChar((String("ug") + kid).c_str(), static_cast<uint8_t>(unlock_approval_[kid]));
 }
 
 bool JobState::scheduleActiveNow(const NetSchedule &s, int hour, int minute, int wday) const {
